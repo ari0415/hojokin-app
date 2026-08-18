@@ -475,7 +475,7 @@ let visibleCount = 30;
 function computeFiltered(s){
   let list = DATA.filter(rec => {
     if (s.q){
-      const hay = (rec.t + " " + orgOf(rec)).toLowerCase();
+      const hay = (rec.t + " " + orgOf(rec) + " " + (rec.c ? rec.c.join(" ") : "")).toLowerCase();
       if (!hay.includes(s.q.toLowerCase())) return false;
     }
     if (!matchesPref(rec, s.pref)) return false;
@@ -492,14 +492,16 @@ function computeFiltered(s){
   });
   if (s.sort === "deadline"){
     list.sort((a,b) => {
-      const da = a.d ? parseD(a.d).getTime() : Infinity;
-      const db = b.d ? parseD(b.d).getTime() : Infinity;
+      const pa = parseD(a.d), pb = parseD(b.d);
+      const da = pa ? pa.getTime() : Infinity;
+      const db = pb ? pb.getTime() : Infinity;
       return da - db;
     });
   } else if (s.sort === "new"){
     list.sort((a,b) => {
-      const da = a.s ? parseD(a.s).getTime() : 0;
-      const db = b.s ? parseD(b.s).getTime() : 0;
+      const pa = parseD(a.s), pb = parseD(b.s);
+      const da = pa ? pa.getTime() : 0;
+      const db = pb ? pb.getTime() : 0;
       return db - da;
     });
   } else if (s.sort === "amountDesc"){
