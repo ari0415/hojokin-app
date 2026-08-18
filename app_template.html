@@ -1,0 +1,773 @@
+<title>補助金コンパス</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --paper: #F7F4EC;
+    --paper-raised: #FFFFFF;
+    --ink: #211E1A;
+    --ink-soft: #5B564C;
+    --ai: #1F3E63;
+    --ai-soft: #5C82AC;
+    --ai-wash: #E7EDF3;
+    --gold: #92661F;
+    --gold-wash: #F3E8D2;
+    --line: #DED6C4;
+    --ok: #2E6E43;
+    --ok-wash: #E3EFE4;
+    --warn: #A6551A;
+    --warn-wash: #F5E7D8;
+    --mute: #8B8375;
+    --mute-wash: #ECE8DD;
+    --shadow: 0 8px 24px rgba(33, 30, 26, 0.10), 0 1px 3px rgba(33, 30, 26, 0.08);
+    --font-head: "Hiragino Mincho ProN", "YuMincho", "Noto Serif JP", serif;
+    --font-body: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", Meiryo, "Noto Sans JP", sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14181D;
+      --paper-raised: #1B2027;
+      --ink: #EDEAE1;
+      --ink-soft: #B4AEA0;
+      --ai: #85A7CE;
+      --ai-soft: #4E6F94;
+      --ai-wash: #202C38;
+      --gold: #D9AE63;
+      --gold-wash: #302A1C;
+      --line: #2C323B;
+      --ok: #7FC28F;
+      --ok-wash: #1E2C21;
+      --warn: #D08A4C;
+      --warn-wash: #33261A;
+      --mute: #948C7B;
+      --mute-wash: #24282E;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14181D;
+    --paper-raised: #1B2027;
+    --ink: #EDEAE1;
+    --ink-soft: #B4AEA0;
+    --ai: #85A7CE;
+    --ai-soft: #4E6F94;
+    --ai-wash: #202C38;
+    --gold: #D9AE63;
+    --gold-wash: #302A1C;
+    --line: #2C323B;
+    --ok: #7FC28F;
+    --ok-wash: #1E2C21;
+    --warn: #D08A4C;
+    --warn-wash: #33261A;
+    --mute: #948C7B;
+    --mute-wash: #24282E;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--ai-wash); }
+  a { color: var(--ai); }
+  button { font-family: inherit; }
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  .app { max-width: 1180px; margin: 0 auto; padding: 0 20px 64px; }
+
+  /* ---- Header ---- */
+  .topbar {
+    padding: 28px 20px 20px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 20px;
+  }
+  .topbar-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .brand h1 {
+    font-family: var(--font-head);
+    font-weight: 600;
+    font-size: 26px;
+    margin: 0;
+    letter-spacing: 0.02em;
+    text-wrap: balance;
+  }
+  .brand .tagline { color: var(--ink-soft); font-size: 13.5px; }
+  .stats { display: flex; gap: 22px; }
+  .stat { text-align: right; }
+  .stat .num { font-size: 20px; font-weight: 700; color: var(--ai); }
+  .stat .label { font-size: 11.5px; color: var(--ink-soft); letter-spacing: 0.04em; }
+
+  /* ---- Tabs ---- */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin: 4px 0 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab-btn {
+    appearance: none;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 4px;
+    margin-right: 22px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .tab-btn[aria-selected="true"] { color: var(--ai); border-bottom-color: var(--ai); }
+  .tab-btn:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+
+  /* ---- Layout: search ---- */
+  .layout { display: grid; grid-template-columns: 260px 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  .filters { position: sticky; top: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12px; font-weight: 700; color: var(--ink-soft); letter-spacing: 0.03em; }
+  input[type="text"], input[type="search"], select {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 9px 10px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    width: 100%;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible {
+    outline: 2px solid var(--ai);
+    outline-offset: 1px;
+  }
+  .amt-row { display: flex; gap: 8px; align-items: center; }
+  .amt-row select { flex: 1; }
+  .check-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+  .check-row input { width: 16px; height: 16px; accent-color: var(--ai); }
+  .reset-link {
+    background: none; border: none; color: var(--ai-soft); font-size: 12.5px;
+    cursor: pointer; text-align: left; padding: 0; text-decoration: underline;
+  }
+
+  /* ---- Results ---- */
+  .results-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .results-count { font-size: 14px; color: var(--ink-soft); }
+  .results-count b { color: var(--ink); font-size: 16px; }
+  .sort-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
+  .sort-row select { width: auto; padding: 6px 8px; font-size: 13px; }
+
+  .card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .card {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: box-shadow .15s ease, border-color .15s ease;
+  }
+  .card:hover, .card:focus-visible { box-shadow: var(--shadow); border-color: var(--ai-soft); }
+  .card-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+  .card-title { font-weight: 700; font-size: 15px; line-height: 1.45; text-wrap: balance; }
+  .card-org { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+  .pill {
+    flex: none;
+    font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em;
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .pill-open { background: var(--ok-wash); color: var(--ok); }
+  .pill-soon { background: var(--warn-wash); color: var(--warn); }
+  .pill-upcoming { background: var(--ai-wash); color: var(--ai); }
+  .pill-closed { background: var(--mute-wash); color: var(--mute); }
+  .pill-info { background: var(--gold-wash); color: var(--gold); }
+  .src-badge {
+    flex: none; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--ink-soft); white-space: nowrap;
+  }
+  .card-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12.5px; color: var(--ink-soft); }
+  .card-meta .amt { color: var(--gold); font-weight: 700; }
+  .card-meta span b { color: var(--ink); font-weight: 600; }
+
+  .empty-state { padding: 60px 20px; text-align: center; color: var(--ink-soft); }
+  .empty-state .big { font-size: 34px; margin-bottom: 8px; }
+
+  .load-more { width: 100%; margin-top: 16px; padding: 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--paper-raised); color: var(--ai); font-weight: 700; font-size: 13.5px; cursor: pointer; }
+  .load-more:hover { background: var(--ai-wash); }
+
+  /* ---- Wizard ---- */
+  .wizard { max-width: 640px; margin: 0 auto; }
+  .wz-progress { display: flex; gap: 6px; margin-bottom: 26px; }
+  .wz-dot { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
+  .wz-dot.done { background: var(--ai-soft); }
+  .wz-dot.active { background: var(--ai); }
+  .wz-step-label { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--ai-soft); text-transform: uppercase; margin-bottom: 6px; }
+  .wz-question { font-family: var(--font-head); font-size: 21px; font-weight: 600; margin: 0 0 18px; text-wrap: balance; }
+  .wz-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+  .wz-options.single { grid-template-columns: 1fr; }
+  .wz-opt {
+    text-align: left;
+    border: 1px solid var(--line);
+    background: var(--paper-raised);
+    border-radius: 9px;
+    padding: 13px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .wz-opt:hover { border-color: var(--ai-soft); }
+  .wz-opt[aria-pressed="true"] { border-color: var(--ai); background: var(--ai-wash); color: var(--ai); font-weight: 700; }
+  .wz-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .wz-tag {
+    border: 1px solid var(--line); background: var(--paper-raised); border-radius: 999px;
+    padding: 7px 14px; font-size: 13px; cursor: pointer; color: var(--ink);
+  }
+  .wz-tag[aria-pressed="true"] { border-color: var(--gold); background: var(--gold-wash); color: var(--gold); font-weight: 700; }
+  .wz-free-text { margin-bottom: 18px; }
+  .wz-live-count { font-size: 13px; color: var(--ink-soft); margin-bottom: 22px; }
+  .wz-live-count b { color: var(--ai); font-size: 15px; }
+  .wz-nav { display: flex; justify-content: space-between; gap: 10px; }
+  .btn {
+    font-size: 14px; font-weight: 700; border-radius: 8px; padding: 11px 20px; cursor: pointer; border: 1px solid transparent;
+  }
+  .btn-primary { background: var(--ai); color: var(--paper); border-color: var(--ai); }
+  .btn-primary:hover { background: var(--ai-soft); border-color: var(--ai-soft); }
+  .btn-ghost { background: none; border-color: var(--line); color: var(--ink-soft); }
+  .btn-ghost:hover { border-color: var(--ai-soft); color: var(--ai); }
+
+  /* ---- Detail overlay ---- */
+  .overlay-bg {
+    position: fixed; inset: 0; background: rgba(20, 18, 14, 0.45); backdrop-filter: blur(1px);
+    display: flex; justify-content: flex-end; z-index: 40;
+  }
+  .overlay-panel {
+    width: min(480px, 100%); height: 100%; background: var(--paper-raised);
+    padding: 26px 24px; overflow-y: auto; box-shadow: -12px 0 30px rgba(0,0,0,0.15);
+  }
+  .overlay-close { background: none; border: none; color: var(--ink-soft); font-size: 14px; cursor: pointer; padding: 4px 0; margin-bottom: 14px; }
+  .overlay-close:hover { color: var(--ai); }
+  .overlay-panel h2 { font-family: var(--font-head); font-size: 20px; line-height: 1.5; margin: 0 0 6px; text-wrap: balance; }
+  .overlay-org { color: var(--ink-soft); font-size: 13px; margin-bottom: 18px; }
+  .overlay-grid { display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; }
+  .overlay-row { display: flex; flex-direction: column; gap: 3px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .overlay-row .k { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); letter-spacing: 0.03em; }
+  .overlay-row .v { font-size: 14.5px; }
+  .overlay-row .v.amt { color: var(--gold); font-weight: 700; font-size: 17px; }
+  .overlay-link {
+    display: block; text-align: center; background: var(--ai); color: var(--paper); text-decoration: none;
+    padding: 13px; border-radius: 8px; font-weight: 700; font-size: 14.5px;
+  }
+  .overlay-link:hover { background: var(--ai-soft); }
+  .overlay-note { font-size: 12px; color: var(--ink-soft); margin-top: 14px; line-height: 1.6; }
+
+  footer.site-footer {
+    max-width: 1180px; margin: 40px auto 0; padding: 20px 20px 0; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--ink-soft); line-height: 1.8;
+  }
+
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <h1>補助金コンパス</h1>
+      <span class="tagline">国・自治体の補助金を、探しやすく。jGrants公開データを毎回同じ場所から検索。</span>
+    </div>
+    <div class="stats tabular">
+      <div class="stat"><div class="num" id="statTotal">-</div><div class="label">掲載件数</div></div>
+      <div class="stat"><div class="num" id="statOpen">-</div><div class="label">現在募集中</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <div class="tabs" role="tablist">
+    <button class="tab-btn" role="tab" id="tabSearchBtn" aria-selected="true">検索する</button>
+    <button class="tab-btn" role="tab" id="tabWizardBtn" aria-selected="false">相談する</button>
+  </div>
+
+  <section id="searchView">
+    <div class="layout">
+      <aside class="panel filters">
+        <div class="field">
+          <label for="fKeyword">キーワード</label>
+          <input type="search" id="fKeyword" placeholder="例: IT導入、設備投資、創業" />
+        </div>
+        <div class="field">
+          <label for="fPref">対象地域</label>
+          <select id="fPref"></select>
+        </div>
+        <div class="field">
+          <label for="fEmp">従業員数（自社の人数）</label>
+          <select id="fEmp">
+            <option value="">指定しない</option>
+            <option value="20">20名以下</option>
+            <option value="100">21〜100名</option>
+            <option value="300">101〜300名</option>
+            <option value="900">301〜900名</option>
+            <option value="901">901名以上</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>補助上限額</label>
+          <div class="amt-row">
+            <select id="fAmt">
+              <option value="">指定しない</option>
+              <option value="0-1000000">100万円未満</option>
+              <option value="1000000-5000000">100〜500万円</option>
+              <option value="5000000-10000000">500〜1000万円</option>
+              <option value="10000000-999999999999">1000万円以上</option>
+            </select>
+          </div>
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="fOpenOnly" checked />
+          <label for="fOpenOnly">募集中・受付前のみ表示</label>
+        </div>
+        <button class="reset-link" id="resetFilters">条件をリセット</button>
+      </aside>
+
+      <main>
+        <div class="results-head">
+          <div class="results-count">全 <b class="tabular" id="rCount">0</b> 件がヒット</div>
+          <div class="sort-row">
+            <label for="sortSelect">並び替え</label>
+            <select id="sortSelect">
+              <option value="deadline">締切が近い順</option>
+              <option value="new">新着順</option>
+              <option value="amountDesc">補助額が高い順</option>
+            </select>
+          </div>
+        </div>
+        <ul class="card-list" id="cardList"></ul>
+        <button class="load-more" id="loadMoreBtn" hidden>もっと見る</button>
+      </main>
+    </div>
+  </section>
+
+  <section id="wizardView" hidden>
+    <div class="wizard panel" style="padding:28px 30px;">
+      <div class="wz-progress" id="wzProgress"></div>
+      <div id="wzStepBody"></div>
+      <div class="wz-live-count" id="wzLiveCount"></div>
+      <div class="wz-nav">
+        <button class="btn btn-ghost" id="wzBack">戻る</button>
+        <button class="btn btn-primary" id="wzNext">次へ</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer class="site-footer">
+  <div>データ出所: デジタル庁「jGrants」公開API（国の補助金および自治体掲載分）／独立行政法人中小企業基盤整備機構「支援情報ヘッドライン」RSS（市区町村独自の補助金情報。日次で自動追加され、掲載件数は徐々に増えていきます）。募集内容・締切等の最終判断は必ず各リンク先の公式ページでご確認ください。</div>
+  <div id="footUpdated">最終更新: -</div>
+</footer>
+
+<script>
+const DATA = /*__DATA__*/;
+
+const PREF_LIST = ["全国","北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県","海外"];
+
+const BLOCKS = {
+  "北海道地方": ["北海道"],
+  "東北地方": ["青森県","岩手県","宮城県","秋田県","山形県","福島県"],
+  "関東・甲信越地方": ["茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","山梨県","長野県"],
+  "東海・北陸地方": ["富山県","石川県","福井県","岐阜県","静岡県","愛知県","三重県"],
+  "近畿地方": ["滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県"],
+  "中国地方": ["鳥取県","島根県","岡山県","広島県","山口県"],
+  "四国地方": ["徳島県","香川県","愛媛県","高知県"],
+  "九州・沖縄地方": ["福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"]
+};
+
+const PURPOSE_TAGS = ["IT導入","設備投資","創業・起業","事業承継","雇用・人材","海外展開","省エネ・脱炭素","観光","研究開発","販路開拓","デジタル化","女性活躍"];
+
+const TODAY = new Date(); TODAY.setHours(0,0,0,0);
+
+function parseD(s){ return (s && s !== "unknown") ? new Date(s+"T00:00:00") : null; }
+
+function subsidyStatus(rec){
+  if (rec.d === "unknown") return "info";
+  const s = parseD(rec.s), d = parseD(rec.d);
+  if (s && TODAY < s) return "upcoming";
+  if (d && TODAY > d) return "closed";
+  return "open";
+}
+
+function daysUntil(dateStr){
+  const d = parseD(dateStr);
+  if (!d) return null;
+  return Math.round((d - TODAY) / 86400000);
+}
+
+function fmtDate(s){
+  if (s === "unknown") return "公式サイトで確認";
+  if (!s) return "随時";
+  const d = parseD(s);
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+}
+
+function fmtAmt(m){
+  if (m === null || m === undefined) return "上限額の記載なし";
+  if (m >= 100000000){
+    const oku = Math.floor(m/100000000);
+    const man = Math.round((m%100000000)/10000);
+    return man > 0 ? `${oku.toLocaleString()}億${man.toLocaleString()}万円` : `${oku.toLocaleString()}億円`;
+  }
+  if (m % 10000 === 0) return (m/10000).toLocaleString() + "万円";
+  return m.toLocaleString() + "円";
+}
+
+function empLabel(e){
+  if (e === 0) return "従業員数の制約なし";
+  if (e === 901) return "901名以上";
+  return e.toLocaleString() + "名以下";
+}
+
+function matchesPref(rec, pref){
+  if (!pref) return true;
+  if (rec.a.includes(pref)) return true;
+  if (rec.a.includes("全国")) return true;
+  for (const block in BLOCKS){
+    if (BLOCKS[block].includes(pref) && rec.a.includes(block)) return true;
+  }
+  return false;
+}
+
+function matchesEmpCompanySize(rec, sizeBracket){
+  if (!sizeBracket) return true;
+  const n = Number(sizeBracket);
+  if (rec.e === 0) return true;
+  if (rec.e === 901) return n >= 901;
+  return n <= rec.e;
+}
+
+function orgOf(rec){ return rec.o || "実施機関の記載なし"; }
+
+/* ---------------- shared filter state ---------------- */
+const state = { q: "", pref: "", emp: "", amt: "", openOnly: true, sort: "deadline" };
+let visibleCount = 30;
+
+function computeFiltered(s){
+  let list = DATA.filter(rec => {
+    if (s.q){
+      const hay = (rec.t + " " + orgOf(rec)).toLowerCase();
+      if (!hay.includes(s.q.toLowerCase())) return false;
+    }
+    if (!matchesPref(rec, s.pref)) return false;
+    if (!matchesEmpCompanySize(rec, s.emp)) return false;
+    if (s.amt){
+      const [lo, hi] = s.amt.split("-").map(Number);
+      if (rec.m === null || rec.m < lo || rec.m >= hi) return false;
+    }
+    if (s.openOnly){
+      const st = subsidyStatus(rec);
+      if (st === "closed") return false;
+    }
+    return true;
+  });
+  if (s.sort === "deadline"){
+    list.sort((a,b) => {
+      const da = a.d ? parseD(a.d).getTime() : Infinity;
+      const db = b.d ? parseD(b.d).getTime() : Infinity;
+      return da - db;
+    });
+  } else if (s.sort === "new"){
+    list.sort((a,b) => {
+      const da = a.s ? parseD(a.s).getTime() : 0;
+      const db = b.s ? parseD(b.s).getTime() : 0;
+      return db - da;
+    });
+  } else if (s.sort === "amountDesc"){
+    list.sort((a,b) => (b.m||0) - (a.m||0));
+  }
+  return list;
+}
+
+/* ---------------- rendering ---------------- */
+function statusPill(rec){
+  const st = subsidyStatus(rec);
+  if (st === "info") return `<span class="pill pill-info">自治体情報・要確認</span>`;
+  if (st === "upcoming") return `<span class="pill pill-upcoming">受付前</span>`;
+  if (st === "closed") return `<span class="pill pill-closed">終了</span>`;
+  const du = daysUntil(rec.d);
+  if (du !== null && du <= 7) return `<span class="pill pill-soon">まもなく締切</span>`;
+  return `<span class="pill pill-open">募集中</span>`;
+}
+
+function srcBadge(rec){
+  return rec.src === "local" ? `<span class="src-badge">自治体独自</span>` : `<span class="src-badge">jGrants</span>`;
+}
+
+function cardHtml(rec){
+  return `<li class="card" tabindex="0" data-id="${escapeHtml(rec.id)}">
+    <div class="card-top">
+      <div>
+        <div class="card-title">${escapeHtml(rec.t)}</div>
+        <div class="card-org">${escapeHtml(orgOf(rec))}</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+        ${statusPill(rec)}
+        ${srcBadge(rec)}
+      </div>
+    </div>
+    <div class="card-meta tabular">
+      <span>📍 ${rec.a.includes("全国") ? "全国" : rec.a.slice(0,3).join("・") + (rec.a.length>3 ? " ほか" : "")}</span>
+      <span>👥 <b>${empLabel(rec.e)}</b></span>
+      <span class="amt">${fmtAmt(rec.m)}</span>
+      <span>締切: <b>${fmtDate(rec.d)}</b></span>
+    </div>
+  </li>`;
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function renderResults(){
+  const list = computeFiltered(state);
+  document.getElementById("rCount").textContent = list.length.toLocaleString();
+  const slice = list.slice(0, visibleCount);
+  const el = document.getElementById("cardList");
+  if (slice.length === 0){
+    el.innerHTML = `<div class="empty-state"><div class="big">🔍</div>該当する補助金が見つかりませんでした。<br>条件を緩めてもう一度お試しください。</div>`;
+  } else {
+    el.innerHTML = slice.map(cardHtml).join("");
+  }
+  document.getElementById("loadMoreBtn").hidden = list.length <= visibleCount;
+  el.querySelectorAll(".card").forEach(card => {
+    card.addEventListener("click", () => openDetail(card.dataset.id));
+    card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(card.dataset.id); } });
+  });
+}
+
+function openDetail(id){
+  const rec = DATA.find(r => r.id === id);
+  if (!rec) return;
+  const bg = document.createElement("div");
+  bg.className = "overlay-bg";
+  const areaText = rec.a.includes("全国") ? "全国（全47都道府県が対象）" : rec.a.join(" / ");
+  const descRow = rec.desc ? `<div class="overlay-row"><div class="k">概要（配信元テキストそのまま）</div><div class="v">${escapeHtml(rec.desc)}</div></div>` : "";
+  const linkLabel = rec.src === "local" ? "支援情報ヘッドラインで詳細を見る ↗" : "公式jGrantsで詳細・申請要領を見る ↗";
+  bg.innerHTML = `<div class="overlay-panel" role="dialog" aria-modal="true">
+    <button class="overlay-close" id="ovClose">← 一覧に戻る</button>
+    <div style="display:flex; gap:8px; margin-bottom:10px;">${statusPill(rec)}${srcBadge(rec)}</div>
+    <h2>${escapeHtml(rec.t)}</h2>
+    <div class="overlay-org">${escapeHtml(orgOf(rec))}</div>
+    <div class="overlay-grid">
+      <div class="overlay-row"><div class="k">補助上限額</div><div class="v amt tabular">${fmtAmt(rec.m)}</div></div>
+      <div class="overlay-row"><div class="k">受付期間</div><div class="v tabular">${fmtDate(rec.s)} 〜 ${fmtDate(rec.d)}</div></div>
+      <div class="overlay-row"><div class="k">対象従業員数</div><div class="v">${empLabel(rec.e)}</div></div>
+      <div class="overlay-row"><div class="k">対象地域</div><div class="v">${escapeHtml(areaText)}</div></div>
+      ${descRow}
+    </div>
+    <a class="overlay-link" href="${escapeHtml(rec.u)}" target="_blank" rel="noopener">${linkLabel}</a>
+    <div class="overlay-note">${rec.src === "local" ? "本アプリは中小機構「支援情報ヘッドライン」のRSS配信情報をもとに一覧化した参考情報です。" : "本アプリはjGrants公開APIの情報をもとに一覧化した参考情報です。"}申請条件・締切の正式な内容は必ずリンク先の公式ページでご確認ください。</div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener("click", e => { if (e.target === bg) bg.remove(); });
+  document.getElementById("ovClose").addEventListener("click", () => bg.remove());
+}
+
+/* ---------------- filter panel wiring ---------------- */
+function initFilterPanel(){
+  const sel = document.getElementById("fPref");
+  sel.innerHTML = `<option value="">指定しない</option>` + PREF_LIST.map(p => `<option value="${p}">${p}</option>`).join("");
+
+  document.getElementById("fKeyword").addEventListener("input", e => { state.q = e.target.value.trim(); visibleCount = 30; renderResults(); });
+  document.getElementById("fPref").addEventListener("change", e => { state.pref = e.target.value; visibleCount = 30; renderResults(); });
+  document.getElementById("fEmp").addEventListener("change", e => { state.emp = e.target.value; visibleCount = 30; renderResults(); });
+  document.getElementById("fAmt").addEventListener("change", e => { state.amt = e.target.value; visibleCount = 30; renderResults(); });
+  document.getElementById("fOpenOnly").addEventListener("change", e => { state.openOnly = e.target.checked; visibleCount = 30; renderResults(); });
+  document.getElementById("sortSelect").addEventListener("change", e => { state.sort = e.target.value; renderResults(); });
+  document.getElementById("loadMoreBtn").addEventListener("click", () => { visibleCount += 30; renderResults(); });
+  document.getElementById("resetFilters").addEventListener("click", () => {
+    state.q=""; state.pref=""; state.emp=""; state.amt=""; state.openOnly=true; state.sort="deadline";
+    document.getElementById("fKeyword").value="";
+    document.getElementById("fPref").value="";
+    document.getElementById("fEmp").value="";
+    document.getElementById("fAmt").value="";
+    document.getElementById("fOpenOnly").checked=true;
+    document.getElementById("sortSelect").value="deadline";
+    visibleCount = 30;
+    renderResults();
+  });
+}
+
+/* ---------------- tabs ---------------- */
+function initTabs(){
+  const searchBtn = document.getElementById("tabSearchBtn");
+  const wizardBtn = document.getElementById("tabWizardBtn");
+  const searchView = document.getElementById("searchView");
+  const wizardView = document.getElementById("wizardView");
+  searchBtn.addEventListener("click", () => {
+    searchBtn.setAttribute("aria-selected","true"); wizardBtn.setAttribute("aria-selected","false");
+    searchView.hidden = false; wizardView.hidden = true;
+  });
+  wizardBtn.addEventListener("click", () => {
+    wizardBtn.setAttribute("aria-selected","true"); searchBtn.setAttribute("aria-selected","false");
+    searchView.hidden = true; wizardView.hidden = false;
+    renderWizardStep();
+  });
+}
+
+/* ---------------- wizard ---------------- */
+const wz = { step: 0, pref: "", emp: "", tags: [], amt: "", openOnly: true };
+const WZ_STEPS = ["地域","従業員数","目的","予算感","確認"];
+
+function wzFilteredState(){
+  return { q: wz.tags.join(" "), pref: wz.pref, emp: wz.emp, amt: wz.amt, openOnly: wz.openOnly, sort: "deadline" };
+}
+
+function wzLiveCountText(){
+  if (wz.step === 0) return "";
+  const n = computeFiltered(wzFilteredStateUpTo()).length;
+  return `現在の条件に合う補助金: <b class="tabular">${n.toLocaleString()}</b> 件`;
+}
+function wzFilteredStateUpTo(){
+  const s = { q:"", pref:"", emp:"", amt:"", openOnly: true, sort:"deadline" };
+  if (wz.step >= 1) s.pref = wz.pref;
+  if (wz.step >= 2) s.emp = wz.emp;
+  if (wz.step >= 3) s.q = wz.tags.join(" ");
+  if (wz.step >= 4) s.amt = wz.amt;
+  return s;
+}
+
+function renderWizardStep(){
+  const body = document.getElementById("wzStepBody");
+  const progress = document.getElementById("wzProgress");
+  progress.innerHTML = WZ_STEPS.map((_,i) => `<div class="wz-dot ${i<wz.step?'done':(i===wz.step?'active':'')}"></div>`).join("");
+
+  const nextBtn = document.getElementById("wzNext");
+  const backBtn = document.getElementById("wzBack");
+  backBtn.style.visibility = wz.step === 0 ? "hidden" : "visible";
+
+  if (wz.step === 0){
+    body.innerHTML = `<div class="wz-step-label">STEP 1 / ${WZ_STEPS.length}</div>
+      <h2 class="wz-question">事業を営んでいる地域は？</h2>
+      <select id="wzPrefSel" style="margin-bottom:20px;"></select>`;
+    const s = document.getElementById("wzPrefSel");
+    s.innerHTML = `<option value="">問わない（全国から探す）</option>` + PREF_LIST.map(p => `<option value="${p}" ${p===wz.pref?'selected':''}>${p}</option>`).join("");
+    s.addEventListener("change", e => { wz.pref = e.target.value; updateLiveCount(); });
+    nextBtn.textContent = "次へ";
+  } else if (wz.step === 1){
+    body.innerHTML = `<div class="wz-step-label">STEP 2 / ${WZ_STEPS.length}</div>
+      <h2 class="wz-question">従業員数はどのくらいですか？</h2>
+      <div class="wz-options single" id="wzEmpOpts">
+        ${[["","指定しない"],["20","20名以下"],["100","21〜100名"],["300","101〜300名"],["900","301〜900名"],["901","901名以上"]]
+          .map(([v,l]) => `<button class="wz-opt" data-v="${v}" aria-pressed="${wz.emp===v}">${l}</button>`).join("")}
+      </div>`;
+    body.querySelectorAll("#wzEmpOpts .wz-opt").forEach(btn => {
+      btn.addEventListener("click", () => {
+        wz.emp = btn.dataset.v;
+        body.querySelectorAll("#wzEmpOpts .wz-opt").forEach(b => b.setAttribute("aria-pressed", b===btn));
+        updateLiveCount();
+      });
+    });
+    nextBtn.textContent = "次へ";
+  } else if (wz.step === 2){
+    body.innerHTML = `<div class="wz-step-label">STEP 3 / ${WZ_STEPS.length}</div>
+      <h2 class="wz-question">どんな目的の補助金をお探しですか？（複数選択可）</h2>
+      <div class="wz-tags" id="wzTagOpts">
+        ${PURPOSE_TAGS.map(t => `<button class="wz-tag" data-v="${t}" aria-pressed="${wz.tags.includes(t)}">${t}</button>`).join("")}
+      </div>
+      <div class="wz-free-text field">
+        <label for="wzFreeText">その他キーワードで探す（任意）</label>
+        <input type="text" id="wzFreeText" placeholder="例: 農業、店舗改装" value="${wz.freeText||''}"/>
+      </div>`;
+    body.querySelectorAll("#wzTagOpts .wz-tag").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const v = btn.dataset.v;
+        const idx = wz.tags.indexOf(v);
+        if (idx === -1) wz.tags.push(v); else wz.tags.splice(idx,1);
+        btn.setAttribute("aria-pressed", wz.tags.includes(v));
+        updateLiveCount();
+      });
+    });
+    document.getElementById("wzFreeText").addEventListener("input", e => {
+      wz.freeText = e.target.value.trim();
+      const base = wz.tags.slice();
+      if (wz.freeText) base.push(wz.freeText);
+      wz._composedTags = base;
+      updateLiveCount();
+    });
+    nextBtn.textContent = "次へ";
+  } else if (wz.step === 3){
+    body.innerHTML = `<div class="wz-step-label">STEP 4 / ${WZ_STEPS.length}</div>
+      <h2 class="wz-question">希望する補助上限額の目安は？</h2>
+      <div class="wz-options single" id="wzAmtOpts">
+        ${[["","指定しない"],["0-1000000","100万円未満"],["1000000-5000000","100〜500万円"],["5000000-10000000","500〜1000万円"],["10000000-999999999999","1000万円以上"]]
+          .map(([v,l]) => `<button class="wz-opt" data-v="${v}" aria-pressed="${wz.amt===v}">${l}</button>`).join("")}
+      </div>`;
+    body.querySelectorAll("#wzAmtOpts .wz-opt").forEach(btn => {
+      btn.addEventListener("click", () => {
+        wz.amt = btn.dataset.v;
+        body.querySelectorAll("#wzAmtOpts .wz-opt").forEach(b => b.setAttribute("aria-pressed", b===btn));
+        updateLiveCount();
+      });
+    });
+    nextBtn.textContent = "結果を見る";
+  } else if (wz.step === 4){
+    const tags = (wz._composedTags && wz._composedTags.length) ? wz._composedTags : wz.tags;
+    state.q = tags.join(" ");
+    state.pref = wz.pref; state.emp = wz.emp; state.amt = wz.amt; state.openOnly = true; state.sort = "deadline";
+    visibleCount = 30;
+    document.getElementById("fKeyword").value = state.q;
+    document.getElementById("fPref").value = state.pref;
+    document.getElementById("fEmp").value = state.emp;
+    document.getElementById("fAmt").value = state.amt;
+    document.getElementById("fOpenOnly").checked = true;
+    document.getElementById("sortSelect").value = "deadline";
+    renderResults();
+    document.getElementById("tabSearchBtn").click();
+    return;
+  }
+  updateLiveCount();
+}
+
+function updateLiveCount(){
+  document.getElementById("wzLiveCount").innerHTML = wzLiveCountText();
+}
+
+function initWizardNav(){
+  document.getElementById("wzNext").addEventListener("click", () => { wz.step = Math.min(wz.step+1, WZ_STEPS.length-1); renderWizardStep(); });
+  document.getElementById("wzBack").addEventListener("click", () => { wz.step = Math.max(wz.step-1, 0); renderWizardStep(); });
+}
+
+/* ---------------- boot ---------------- */
+function boot(){
+  document.getElementById("statTotal").textContent = DATA.length.toLocaleString();
+  const openCount = DATA.filter(r => subsidyStatus(r) !== "closed").length;
+  document.getElementById("statOpen").textContent = openCount.toLocaleString();
+  document.getElementById("footUpdated").textContent = "最終更新: " + TODAY.getFullYear() + "年" + (TODAY.getMonth()+1) + "月" + TODAY.getDate() + "日（jGrants公開APIより取得）";
+  initFilterPanel();
+  initTabs();
+  initWizardNav();
+  renderResults();
+}
+boot();
+</script>
