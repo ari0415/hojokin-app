@@ -522,7 +522,9 @@ function statusPill(rec){
 }
 
 function srcBadge(rec){
-  return rec.src === "local" ? `<span class="src-badge">自治体独自</span>` : `<span class="src-badge">jGrants</span>`;
+  if (rec.src === "local") return `<span class="src-badge">自治体独自</span>`;
+  if (rec.src === "maff") return `<span class="src-badge">業界団体・省庁事業</span>`;
+  return `<span class="src-badge">jGrants</span>`;
 }
 
 function cardHtml(rec){
@@ -574,7 +576,7 @@ function openDetail(id){
   bg.className = "overlay-bg";
   const areaText = rec.a.includes("全国") ? "全国（全47都道府県が対象）" : rec.a.join(" / ");
   const descRow = rec.desc ? `<div class="overlay-row"><div class="k">概要（配信元テキストそのまま）</div><div class="v">${escapeHtml(rec.desc)}</div></div>` : "";
-  const linkLabel = rec.src === "local" ? "支援情報ヘッドラインで詳細を見る ↗" : "公式jGrantsで詳細・申請要領を見る ↗";
+  const linkLabel = rec.src === "local" ? "支援情報ヘッドラインで詳細を見る ↗" : rec.src === "maff" ? "事務局サイトで詳細・申請要領を見る ↗" : "公式jGrantsで詳細・申請要領を見る ↗";
   bg.innerHTML = `<div class="overlay-panel" role="dialog" aria-modal="true">
     <button class="overlay-close" id="ovClose">← 一覧に戻る</button>
     <div style="display:flex; gap:8px; margin-bottom:10px;">${statusPill(rec)}${srcBadge(rec)}</div>
@@ -588,7 +590,7 @@ function openDetail(id){
       ${descRow}
     </div>
     <a class="overlay-link" href="${escapeHtml(rec.u)}" target="_blank" rel="noopener">${linkLabel}</a>
-    <div class="overlay-note">${rec.src === "local" ? "本アプリは中小機構「支援情報ヘッドライン」のRSS配信情報をもとに一覧化した参考情報です。" : "本アプリはjGrants公開APIの情報をもとに一覧化した参考情報です。"}申請条件・締切の正式な内容は必ずリンク先の公式ページでご確認ください。</div>
+    <div class="overlay-note">${rec.src === "local" ? "本アプリは中小機構「支援情報ヘッドライン」の情報をもとに一覧化した参考情報です。" : rec.src === "maff" ? "本アプリで手動で追加した情報です。" : "本アプリはjGrants公開APIの情報をもとに一覧化した参考情報です。"}申請条件・締切の正式な内容は必ずリンク先の公式ページでご確認ください。</div>
   </div>`;
   document.body.appendChild(bg);
   bg.addEventListener("click", e => { if (e.target === bg) bg.remove(); });

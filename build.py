@@ -125,6 +125,7 @@ def scrape_new(existing_ids):
 def main():
     local_path = ROOT / "data" / "local_gov.json"
     national_path = ROOT / "data" / "jgrants_national.json"
+    curated_path = ROOT / "data" / "curated.json"
     template_path = ROOT / "app_template.html"
     out_path = ROOT / "index.html"
     dataset_path = ROOT / "dataset.json"
@@ -143,7 +144,8 @@ def main():
     )
 
     national = json.loads(national_path.read_text(encoding="utf-8"))
-    combined = national + merged_local
+    curated = json.loads(curated_path.read_text(encoding="utf-8")) if curated_path.exists() else []
+    combined = national + merged_local + curated
     dataset_path.write_text(
         json.dumps(combined, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
