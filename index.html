@@ -208,6 +208,21 @@
     flex: none; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
     border: 1px solid var(--line); color: var(--ink-soft); white-space: nowrap;
   }
+  .kind-chip {
+    display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; margin-right: 6px;
+    border-radius: 4px; background: var(--ai-wash); color: var(--ai); vertical-align: 2px;
+  }
+  .related-count { color: var(--ai); font-weight: 700; }
+  .tags-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;
+    font-size: 13px; color: var(--ink-soft);
+  }
+  .tags-bar .wz-tag { cursor: default; padding: 4px 10px; font-size: 12px; }
+  .related-block { margin-top: 22px; }
+  .related-block .k { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); letter-spacing: 0.03em; margin-bottom: 8px; }
+  .related-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 13px; line-height: 1.5; }
+  .related-list .pill { font-size: 10.5px; padding: 1px 7px; margin-right: 4px; }
+  .related-src { color: var(--ink-soft); font-size: 11.5px; white-space: nowrap; }
   .card-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12.5px; color: var(--ink-soft); }
   .card-meta .amt { color: var(--gold); font-weight: 700; }
   .card-meta span b { color: var(--ink); font-weight: 600; }
@@ -316,7 +331,7 @@
       <aside class="panel filters">
         <div class="field">
           <label for="fKeyword">キーワード</label>
-          <input type="search" id="fKeyword" placeholder="例: IT導入、設備投資、創業" />
+          <input type="search" id="fKeyword" placeholder="例: 工場 LED（スペース区切りで絞り込み）" />
         </div>
         <div class="field">
           <label for="fPref">対象地域</label>
@@ -334,7 +349,7 @@
           </select>
         </div>
         <div class="field">
-          <label>補助上限額</label>
+          <label>補助上限額（不明なものも表示）</label>
           <div class="amt-row">
             <select id="fAmt">
               <option value="">指定しない</option>
@@ -368,6 +383,7 @@
             </select>
           </div>
         </div>
+        <div class="tags-bar" id="tagsBar" hidden></div>
         <ul class="card-list" id="cardList"></ul>
         <button class="load-more" id="loadMoreBtn" hidden>もっと見る</button>
       </main>
@@ -417,6 +433,61 @@ const AGENCIES = [
 ];
 DATA.forEach(r => { r.g = AGENCIES.filter(a => a.test(r)).map(a => a.key); });
 
+const BUILD_INFO = {"date":"2026-10-19"};
+
+// NFKC so that ＩＴ/IT, ＬＥＤ/LED, full-width spaces etc. compare equal.
+const norm = s => (s || "").normalize("NFKC").toLowerCase();
+
+// J-Net21 titles look like "【三沢市】補助金・助成金：「…」"; strip the boilerplate label for display.
+const KIND_RE = /^(【[^】]+】)?\s*(補助金・助成金・融資|補助金・助成金|支援情報|融資・貸付|税制|事業者募集)\s*[:：]\s*/;
+function cleanTitle(t){
+  const m = t.match(KIND_RE);
+  if (!m) return { title: t, kind: "" };
+  let rest = t.slice(m[0].length).trim();
+  if (/^「[^「」]*」$/.test(rest)) rest = rest.slice(1, -1);
+  return { title: (m[1] || "") + rest, kind: m[2] };
+}
+
+DATA.forEach(r => {
+  r._ct = cleanTitle(r.t);
+  r._h = norm([r.t, r.o, (r.c || []).join(" "), r.g.join(" ")].join(" "));
+});
+
+// Group variants of one programme (枠違い・支部違い・jGrantsとヘッドラインの二重掲載) so the list shows each once.
+// Only records with the same real deadline are compared; titles must share a long prefix or one must contain the other.
+(function groupDuplicates(){
+  const keyOf = r => norm(r._ct.title)
+    .replace(/[\s・_\-「」『』【】()<>\[\]、。,.:!?~〜]/g, "")
+    .replace(/について|のお知らせ|のご案内|の公募|公募|受付締切|締切分|締切/g, "");
+  const parent = new Map();
+  const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const byD = {};
+  DATA.forEach(r => {
+    parent.set(r.id, r.id);
+    if (r.d && r.d !== "unknown") (byD[r.d] = byD[r.d] || []).push(r);
+  });
+  const areaOk = (a, b) => a.a.includes("全国") || b.a.includes("全国") || a.a.some(x => b.a.includes(x));
+  const lcp = (a, b) => { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; };
+  for (const d in byD) {
+    const g = byD[d];
+    if (g.length < 2) continue;
+    const keys = g.map(keyOf);
+    for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) {
+      const A = g[i], B = g[j], ka = keys[i], kb = keys[j];
+      if (!areaOk(A, B)) continue;
+      if (A.src === "local" && B.src === "local" && (A.o || "") !== (B.o || "")) continue;
+      const [short, long] = ka.length < kb.length ? [ka, kb] : [kb, ka];
+      if ((short.length >= 10 && long.includes(short)) || lcp(ka, kb) >= 18) parent.set(find(A.id), find(B.id));
+    }
+  }
+  DATA.forEach(r => { r._gid = find(r.id); });
+})();
+const GROUP_MEMBERS = {};
+DATA.forEach(r => { (GROUP_MEMBERS[r._gid] = GROUP_MEMBERS[r._gid] || []).push(r); });
+
+// Prefer the member with the most usable details as the one shown in the list.
+const infoScore = r => (r.m != null ? 2 : 0) + (parseD(r.s) ? 1 : 0) + (r.src === "national" ? 1 : 0);
+
 const PREF_LIST = ["全国","北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県","海外"];
 
 const BLOCKS = {
@@ -431,6 +502,21 @@ const BLOCKS = {
 };
 
 const PURPOSE_TAGS = ["IT導入","設備投資","創業・起業","事業承継","雇用・人材","海外展開","省エネ・脱炭素","観光","研究開発","販路開拓","デジタル化","女性活躍"];
+// A record matches a purpose tag if it contains any of these words (J-Net21 category names included).
+const TAG_TERMS = {
+  "IT導入": ["it導入", "it化", "itツール", "デジタル化・ai導入"],
+  "設備投資": ["設備"],
+  "創業・起業": ["創業", "起業", "スタートアップ"],
+  "事業承継": ["事業承継", "承継", "m&a"],
+  "雇用・人材": ["雇用", "人材", "賃上げ"],
+  "海外展開": ["海外", "輸出"],
+  "省エネ・脱炭素": ["省エネ", "脱炭素", "led", "再エネ"],
+  "観光": ["観光", "インバウンド"],
+  "研究開発": ["研究開発", "技術開発"],
+  "販路開拓": ["販路"],
+  "デジタル化": ["デジタル", "dx"],
+  "女性活躍": ["女性"],
+};
 
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 
@@ -456,6 +542,14 @@ function fmtDate(s){
   if (!s) return "随時";
   const d = parseD(s);
   return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+}
+
+function fmtDeadline(rec){
+  const st = subsidyStatus(rec);
+  if (st === "upcoming") return `受付開始: <b>${fmtDate(rec.s)}</b>`;
+  const du = daysUntil(rec.d);
+  if (st === "open" && du !== null) return `締切: <b>${fmtDate(rec.d)}</b>（${du === 0 ? "本日締切" : `あと${du}日`}）`;
+  return `締切: <b>${fmtDate(rec.d)}</b>`;
 }
 
 function fmtAmt(m){
@@ -496,21 +590,22 @@ function matchesEmpCompanySize(rec, sizeBracket){
 function orgOf(rec){ return rec.o || "実施機関の記載なし"; }
 
 /* ---------------- shared filter state ---------------- */
-const state = { q: "", pref: "", emp: "", amt: "", agency: "", openOnly: true, sort: "deadline" };
+const state = { q: "", tags: [], pref: "", emp: "", amt: "", agency: "", openOnly: true, sort: "deadline" };
 let visibleCount = 30;
 
 function computeFiltered(s){
+  const terms = norm(s.q).split(/\s+/).filter(Boolean);
+  const tagTerms = (s.tags || []).flatMap(t => TAG_TERMS[t] || [norm(t)]);
   let list = DATA.filter(rec => {
-    if (s.q){
-      const hay = (rec.t + " " + orgOf(rec) + " " + (rec.c ? rec.c.join(" ") : "") + " " + rec.g.join(" ")).toLowerCase();
-      if (!hay.includes(s.q.toLowerCase())) return false;
-    }
+    if (!terms.every(t => rec._h.includes(t))) return false;
+    if (tagTerms.length && !tagTerms.some(t => rec._h.includes(t))) return false;
     if (s.agency && !rec.g.includes(s.agency)) return false;
     if (!matchesPref(rec, s.pref)) return false;
     if (!matchesEmpCompanySize(rec, s.emp)) return false;
     if (s.amt){
       const [lo, hi] = s.amt.split("-").map(Number);
-      if (rec.m === null || rec.m < lo || rec.m >= hi) return false;
+      // Most local listings carry no cap; keep them rather than silently dropping possible matches.
+      if (rec.m != null && (rec.m < lo || rec.m >= hi)) return false;
     }
     if (s.openOnly){
       const st = subsidyStatus(rec);
@@ -538,10 +633,45 @@ function computeFiltered(s){
   return list;
 }
 
+// One entry per programme group, keeping the sort order; `related` = other matching members of the group.
+function collapseGroups(list){
+  const firstIdx = new Map();
+  const out = [];
+  for (const rec of list) {
+    if (!firstIdx.has(rec._gid)) { firstIdx.set(rec._gid, out.length); out.push({ rec, related: [] }); }
+    else out[firstIdx.get(rec._gid)].related.push(rec);
+  }
+  for (const item of out) {
+    item.title = item.rec._ct.title;
+    item.maxM = item.rec.m;
+    if (!item.related.length) continue;
+    const all = [item.rec, ...item.related];
+    const best = all.reduce((a, b) => infoScore(b) > infoScore(a) ? b : a);
+    item.rec = best;
+    item.related = all.filter(r => r !== best);
+    const sameSrc = all.filter(r => r.src === best.src);
+    item.title = (sameSrc.length > 1 && groupTitle(sameSrc)) || best._ct.title;
+    const ms = all.map(r => r.m).filter(m => m != null);
+    item.maxM = ms.length ? Math.max(...ms) : null;
+  }
+  return out;
+}
+
+// Shared part of the members' titles, cut back to a natural break (e.g. drop "_PMI推進枠(...)" variants).
+function groupTitle(recs){
+  const titles = recs.map(r => r._ct.title.normalize("NFKC"));
+  let p = titles[0];
+  for (const t of titles.slice(1)) { let i = 0; while (i < p.length && i < t.length && p[i] === t[i]) i++; p = p.slice(0, i); }
+  if (titles.includes(p)) return p;
+  const cut = Math.max(...["_", "(", "<", "[", "「", " "].map(c => p.lastIndexOf(c)));
+  const t = (cut > 0 ? p.slice(0, cut) : "").replace(/[_\s・]+$/, "");
+  return t.length >= 12 ? t : "";
+}
+
 /* ---------------- rendering ---------------- */
 function statusPill(rec){
   const st = subsidyStatus(rec);
-  if (st === "info") return `<span class="pill pill-info">自治体情報・要確認</span>`;
+  if (st === "info") return `<span class="pill pill-info">締切は要確認</span>`;
   if (st === "upcoming") return `<span class="pill pill-upcoming">受付前</span>`;
   if (st === "closed") return `<span class="pill pill-closed">終了</span>`;
   const du = daysUntil(rec.d);
@@ -550,17 +680,23 @@ function statusPill(rec){
 }
 
 function srcBadge(rec){
-  if (rec.src === "local") return `<span class="src-badge">自治体独自</span>`;
-  if (rec.src === "maff") return `<span class="src-badge">業界団体・省庁事業</span>`;
+  if (rec.src === "local") return `<span class="src-badge">支援情報ヘッドライン</span>`;
+  if (rec.src === "maff") return `<span class="src-badge">公式サイトから追加</span>`;
   return `<span class="src-badge">jGrants</span>`;
 }
 
-function cardHtml(rec){
+function kindChip(rec){
+  const k = rec._ct.kind;
+  return k && k !== "補助金・助成金" ? `<span class="kind-chip">${escapeHtml(k)}</span>` : "";
+}
+
+function cardHtml(item){
+  const rec = item.rec;
   return `<li class="card" tabindex="0" data-id="${escapeHtml(rec.id)}">
     <div class="card-top">
       <div>
-        <div class="card-title">${escapeHtml(rec.t)}</div>
-        <div class="card-org">${escapeHtml(orgOf(rec))}</div>
+        <div class="card-title">${kindChip(rec)}${escapeHtml(item.title)}</div>
+        ${rec.o ? `<div class="card-org">${escapeHtml(rec.o)}</div>` : ""}
       </div>
       <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
         ${statusPill(rec)}
@@ -569,10 +705,11 @@ function cardHtml(rec){
     </div>
     <div class="card-meta tabular">
       <span>📍 ${rec.a.includes("全国") ? "全国" : rec.a.slice(0,3).join("・") + (rec.a.length>3 ? " ほか" : "")}</span>
-      <span>👥 <b>${empLabel(rec.e)}</b></span>
-      <span class="amt">${fmtAmt(rec.m)}</span>
-      <span>締切: <b>${fmtDate(rec.d)}</b></span>
+      ${rec.e ? `<span>👥 <b>${empLabel(rec.e)}</b></span>` : ""}
+      ${item.maxM != null ? `<span class="amt">上限 ${item.related.length ? "最大" : ""}${fmtAmt(item.maxM)}</span>` : ""}
+      <span>${fmtDeadline(rec)}</span>
       ${rec.g.length ? `<span>🏢 ${escapeHtml(rec.g.join("・"))}</span>` : ""}
+      ${item.related.length ? `<span class="related-count">＋同じ制度の別枠・別掲載 ${item.related.length}件</span>` : ""}
     </div>
   </li>`;
 }
@@ -581,17 +718,29 @@ function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
+function renderTagsBar(){
+  const bar = document.getElementById("tagsBar");
+  bar.hidden = !state.tags.length;
+  bar.innerHTML = state.tags.length
+    ? `目的（いずれかに該当）: ${state.tags.map(t => `<span class="wz-tag" aria-pressed="true">${escapeHtml(t)}</span>`).join("")}<button class="reset-link" id="clearTags">目的の条件を外す</button>`
+    : "";
+  if (state.tags.length) document.getElementById("clearTags").addEventListener("click", () => { state.tags = []; visibleCount = 30; renderResults(); });
+}
+
+let currentItems = [];
 function renderResults(){
-  const list = computeFiltered(state);
-  document.getElementById("rCount").textContent = list.length.toLocaleString();
-  const slice = list.slice(0, visibleCount);
+  renderTagsBar();
+  const items = collapseGroups(computeFiltered(state));
+  currentItems = items;
+  document.getElementById("rCount").textContent = items.length.toLocaleString();
+  const slice = items.slice(0, visibleCount);
   const el = document.getElementById("cardList");
   if (slice.length === 0){
     el.innerHTML = `<div class="empty-state"><div class="big">🔍</div>該当する補助金が見つかりませんでした。<br>条件を緩めてもう一度お試しください。</div>`;
   } else {
     el.innerHTML = slice.map(cardHtml).join("");
   }
-  document.getElementById("loadMoreBtn").hidden = list.length <= visibleCount;
+  document.getElementById("loadMoreBtn").hidden = items.length <= visibleCount;
   el.querySelectorAll(".card").forEach(card => {
     card.addEventListener("click", () => openDetail(card.dataset.id));
     card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(card.dataset.id); } });
@@ -601,6 +750,12 @@ function renderResults(){
 function openDetail(id){
   const rec = DATA.find(r => r.id === id);
   if (!rec) return;
+  const item = currentItems.find(it => it.rec === rec);
+  const related = item ? item.related : [];
+  const relatedHtml = related.length ? `<div class="related-block">
+      <div class="k">同じ制度の別枠・別掲載（${related.length}件）</div>
+      <ul class="related-list">${related.map(r => `<li>${statusPill(r)} <a href="${escapeHtml(r.u)}" target="_blank" rel="noopener">${escapeHtml(r._ct.title)}</a> <span class="related-src">${r.src === "local" ? "支援情報ヘッドライン" : r.src === "maff" ? "公式サイト" : "jGrants"}</span></li>`).join("")}</ul>
+    </div>` : "";
   const bg = document.createElement("div");
   bg.className = "overlay-bg";
   const areaText = rec.a.includes("全国") ? "全国（全47都道府県が対象）" : rec.a.join(" / ");
@@ -609,7 +764,7 @@ function openDetail(id){
   bg.innerHTML = `<div class="overlay-panel" role="dialog" aria-modal="true">
     <button class="overlay-close" id="ovClose">← 一覧に戻る</button>
     <div style="display:flex; gap:8px; margin-bottom:10px;">${statusPill(rec)}${srcBadge(rec)}</div>
-    <h2>${escapeHtml(rec.t)}</h2>
+    <h2>${kindChip(rec)}${escapeHtml(rec._ct.title)}</h2>
     <div class="overlay-org">${escapeHtml(orgOf(rec))}</div>
     <div class="overlay-grid">
       <div class="overlay-row"><div class="k">補助上限額</div><div class="v amt tabular">${fmtAmt(rec.m)}</div></div>
@@ -621,6 +776,7 @@ function openDetail(id){
       ${descRow}
     </div>
     <a class="overlay-link" href="${escapeHtml(rec.u)}" target="_blank" rel="noopener">${linkLabel}</a>
+    ${relatedHtml}
     <div class="overlay-note">${rec.src === "local" ? "本アプリは中小機構「支援情報ヘッドライン」の情報をもとに一覧化した参考情報です。" : rec.src === "maff" ? "本アプリで手動で追加した情報です。" : "本アプリはjGrants公開APIの情報をもとに一覧化した参考情報です。"}申請条件・締切の正式な内容は必ずリンク先の公式ページでご確認ください。</div>
   </div>`;
   document.body.appendChild(bg);
@@ -644,7 +800,7 @@ function initFilterPanel(){
   document.getElementById("sortSelect").addEventListener("change", e => { state.sort = e.target.value; renderResults(); });
   document.getElementById("loadMoreBtn").addEventListener("click", () => { visibleCount += 30; renderResults(); });
   document.getElementById("resetFilters").addEventListener("click", () => {
-    state.q=""; state.pref=""; state.emp=""; state.amt=""; state.agency=""; state.openOnly=true; state.sort="deadline";
+    state.q=""; state.tags=[]; state.pref=""; state.emp=""; state.amt=""; state.agency=""; state.openOnly=true; state.sort="deadline";
     document.getElementById("fAgency").value="";
     document.getElementById("fKeyword").value="";
     document.getElementById("fPref").value="";
@@ -678,21 +834,16 @@ function initTabs(){
 const wz = { step: 0, pref: "", emp: "", tags: [], amt: "", openOnly: true };
 const WZ_STEPS = ["地域","従業員数","目的","予算感","確認"];
 
-function wzFilteredState(){
-  return { q: wz.tags.join(" "), pref: wz.pref, emp: wz.emp, amt: wz.amt, openOnly: wz.openOnly, sort: "deadline" };
-}
-
 function wzLiveCountText(){
-  if (wz.step === 0) return "";
-  const n = computeFiltered(wzFilteredStateUpTo()).length;
+  const n = collapseGroups(computeFiltered(wzFilteredStateUpTo())).length;
   return `現在の条件に合う補助金: <b class="tabular">${n.toLocaleString()}</b> 件`;
 }
+// Includes the answer on the current step, so the count reacts as soon as an option is picked.
 function wzFilteredStateUpTo(){
-  const s = { q:"", pref:"", emp:"", amt:"", openOnly: true, sort:"deadline" };
-  if (wz.step >= 1) s.pref = wz.pref;
-  if (wz.step >= 2) s.emp = wz.emp;
-  if (wz.step >= 3) s.q = wz.tags.join(" ");
-  if (wz.step >= 4) s.amt = wz.amt;
+  const s = { q:"", tags: [], pref: wz.pref, emp:"", amt:"", agency:"", openOnly: true, sort:"deadline" };
+  if (wz.step >= 1) s.emp = wz.emp;
+  if (wz.step >= 2) { s.tags = wz.tags.slice(); s.q = wz.freeText || ""; }
+  if (wz.step >= 3) s.amt = wz.amt;
   return s;
 }
 
@@ -749,15 +900,13 @@ function renderWizardStep(){
     });
     document.getElementById("wzFreeText").addEventListener("input", e => {
       wz.freeText = e.target.value.trim();
-      const base = wz.tags.slice();
-      if (wz.freeText) base.push(wz.freeText);
-      wz._composedTags = base;
       updateLiveCount();
     });
     nextBtn.textContent = "次へ";
   } else if (wz.step === 3){
     body.innerHTML = `<div class="wz-step-label">STEP 4 / ${WZ_STEPS.length}</div>
       <h2 class="wz-question">希望する補助上限額の目安は？</h2>
+      <p style="margin:-8px 0 16px; font-size:13px; color:var(--ink-soft);">上限額が公表されていない補助金も、候補として残します。</p>
       <div class="wz-options single" id="wzAmtOpts">
         ${[["","指定しない"],["0-1000000","100万円未満"],["1000000-5000000","100〜500万円"],["5000000-10000000","500〜1000万円"],["10000000-999999999999","1000万円以上"]]
           .map(([v,l]) => `<button class="wz-opt" data-v="${v}" aria-pressed="${wz.amt===v}">${l}</button>`).join("")}
@@ -771,8 +920,8 @@ function renderWizardStep(){
     });
     nextBtn.textContent = "結果を見る";
   } else if (wz.step === 4){
-    const tags = (wz._composedTags && wz._composedTags.length) ? wz._composedTags : wz.tags;
-    state.q = tags.join(" ");
+    state.tags = wz.tags.slice();
+    state.q = wz.freeText || "";
     state.pref = wz.pref; state.emp = wz.emp; state.amt = wz.amt; state.agency = ""; state.openOnly = true; state.sort = "deadline";
     document.getElementById("fAgency").value = "";
     visibleCount = 30;
@@ -801,9 +950,9 @@ function initWizardNav(){
 /* ---------------- boot ---------------- */
 function boot(){
   document.getElementById("statTotal").textContent = DATA.length.toLocaleString();
-  const openCount = DATA.filter(r => subsidyStatus(r) !== "closed").length;
+  const openCount = collapseGroups(DATA.filter(r => subsidyStatus(r) !== "closed")).length;
   document.getElementById("statOpen").textContent = openCount.toLocaleString();
-  document.getElementById("footUpdated").textContent = "最終更新: " + TODAY.getFullYear() + "年" + (TODAY.getMonth()+1) + "月" + TODAY.getDate() + "日（jGrants公開APIより取得）";
+  document.getElementById("footUpdated").textContent = "データ取得日: " + fmtDate(BUILD_INFO.date);
   initFilterPanel();
   initTabs();
   initWizardNav();

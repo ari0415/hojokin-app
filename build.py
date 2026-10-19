@@ -11,6 +11,7 @@ import html
 import json
 import re
 import urllib.request
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -157,7 +158,10 @@ def main():
     template = template_path.read_text(encoding="utf-8")
     combined_json = json.dumps(combined, ensure_ascii=False, separators=(",", ":"))
     overrides_json = json.dumps(overrides, ensure_ascii=False, separators=(",", ":"))
-    final_html = template.replace("/*__DATA__*/", combined_json).replace("/*__OVERRIDES__*/", overrides_json)
+    build_info = json.dumps({"date": date.today().isoformat()})
+    final_html = (template.replace("/*__DATA__*/", combined_json)
+                  .replace("/*__OVERRIDES__*/", overrides_json)
+                  .replace("/*__BUILD_INFO__*/", build_info))
     out_path.write_text(final_html, encoding="utf-8")
 
     print(f"New local-gov items added: {len(new_items)}")
