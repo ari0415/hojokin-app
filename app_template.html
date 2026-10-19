@@ -345,6 +345,10 @@
             </select>
           </div>
         </div>
+        <div class="field">
+          <label for="fAgency">実施団体・事務局</label>
+          <select id="fAgency"></select>
+        </div>
         <div class="check-row">
           <input type="checkbox" id="fOpenOnly" checked />
           <label for="fOpenOnly">募集中・受付前のみ表示</label>
@@ -384,12 +388,34 @@
 </div>
 
 <footer class="site-footer">
-  <div>データ出所: デジタル庁「jGrants」公開API（国の補助金・助成金および自治体掲載分）／独立行政法人中小企業基盤整備機構「支援情報ヘッドライン」（都道府県・市区町村独自の補助金・助成金・給付金・融資情報）。募集内容・締切等の最終判断は必ず各リンク先の公式ページでご確認ください。</div>
+  <div>データ出所: デジタル庁「jGrants」公開API（国の補助金・助成金および自治体掲載分）／独立行政法人中小企業基盤整備機構「支援情報ヘッドライン」（都道府県・市区町村独自の補助金・助成金・給付金・融資情報）。主要補助金の受付状況は中小機構「補助金活用ナビ」の公式スケジュールで補正しています。募集内容・締切等の最終判断は必ず各リンク先の公式ページでご確認ください。</div>
   <div id="footUpdated">最終更新: -</div>
 </footer>
 
 <script>
 const DATA = /*__DATA__*/;
+
+// Corrections confirmed against official schedules (data/overrides.json), keyed by record id.
+const OVERRIDES = /*__OVERRIDES__*/;
+DATA.forEach(r => { if (OVERRIDES[r.id]) Object.assign(r, OVERRIDES[r.id]); });
+
+// Only links confirmed from official sources: SMRJ-run subsidy sites live under smrj.go.jp;
+// 全国中央会 is named as ものづくり補助金事務局 in its 公募要領; 持続化補助金 is split into 商工会議所地区/商工会地区.
+const AGENCIES = [
+  { key: "中小機構", label: "中小機構（中小企業基盤整備機構）",
+    test: r => /中小企業基盤整備機構|中小機構/.test(r.o || "") ||
+      /(中小企業)?新事業進出補助金|新事業進出・ものづくり商業サービス補助金|中小企業省力化投資補助|デジタル化・AI導入補助金|中小企業成長加速化補助金/.test(r.t) },
+  { key: "中小企業団体中央会", label: "中小企業団体中央会（全国・都道府県）",
+    test: r => /中小企業団体中央会/.test(r.o || "") ||
+      (/ものづくり・商業・サービス生産性向上促進補助金/.test(r.t) && !/新事業進出/.test(r.t)) },
+  { key: "商工会議所", label: "商工会議所（日本商工会議所・各地）",
+    test: r => /商工会議所/.test(r.o || "") || /商工会議所地区/.test(r.t) },
+  { key: "商工会", label: "商工会（全国商工会連合会・各地）",
+    test: r => /商工会(?!議所)/.test(r.o || "") || /商工会地区/.test(r.t) },
+  { key: "業界団体", label: "業界団体（全米販など）",
+    test: r => r.src === "maff" },
+];
+DATA.forEach(r => { r.g = AGENCIES.filter(a => a.test(r)).map(a => a.key); });
 
 const PREF_LIST = ["全国","北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県","海外"];
 
@@ -411,6 +437,7 @@ const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 function parseD(s){ return (s && s !== "unknown") ? new Date(s+"T00:00:00") : null; }
 
 function subsidyStatus(rec){
+  if (rec.x === "closed") return "closed";
   if (rec.d === "unknown") return "info";
   const s = parseD(rec.s), d = parseD(rec.d);
   if (s && TODAY < s) return "upcoming";
@@ -469,15 +496,16 @@ function matchesEmpCompanySize(rec, sizeBracket){
 function orgOf(rec){ return rec.o || "実施機関の記載なし"; }
 
 /* ---------------- shared filter state ---------------- */
-const state = { q: "", pref: "", emp: "", amt: "", openOnly: true, sort: "deadline" };
+const state = { q: "", pref: "", emp: "", amt: "", agency: "", openOnly: true, sort: "deadline" };
 let visibleCount = 30;
 
 function computeFiltered(s){
   let list = DATA.filter(rec => {
     if (s.q){
-      const hay = (rec.t + " " + orgOf(rec) + " " + (rec.c ? rec.c.join(" ") : "")).toLowerCase();
+      const hay = (rec.t + " " + orgOf(rec) + " " + (rec.c ? rec.c.join(" ") : "") + " " + rec.g.join(" ")).toLowerCase();
       if (!hay.includes(s.q.toLowerCase())) return false;
     }
+    if (s.agency && !rec.g.includes(s.agency)) return false;
     if (!matchesPref(rec, s.pref)) return false;
     if (!matchesEmpCompanySize(rec, s.emp)) return false;
     if (s.amt){
@@ -544,6 +572,7 @@ function cardHtml(rec){
       <span>👥 <b>${empLabel(rec.e)}</b></span>
       <span class="amt">${fmtAmt(rec.m)}</span>
       <span>締切: <b>${fmtDate(rec.d)}</b></span>
+      ${rec.g.length ? `<span>🏢 ${escapeHtml(rec.g.join("・"))}</span>` : ""}
     </div>
   </li>`;
 }
@@ -587,6 +616,8 @@ function openDetail(id){
       <div class="overlay-row"><div class="k">受付期間</div><div class="v tabular">${fmtDate(rec.s)} 〜 ${fmtDate(rec.d)}</div></div>
       <div class="overlay-row"><div class="k">対象従業員数</div><div class="v">${empLabel(rec.e)}</div></div>
       <div class="overlay-row"><div class="k">対象地域</div><div class="v">${escapeHtml(areaText)}</div></div>
+      ${rec.g.length ? `<div class="overlay-row"><div class="k">実施団体・事務局</div><div class="v">${escapeHtml(rec.g.map(k => AGENCIES.find(a => a.key === k).label).join(" / "))}</div></div>` : ""}
+      ${rec.n ? `<div class="overlay-row"><div class="k">補足</div><div class="v">${escapeHtml(rec.n)}</div></div>` : ""}
       ${descRow}
     </div>
     <a class="overlay-link" href="${escapeHtml(rec.u)}" target="_blank" rel="noopener">${linkLabel}</a>
@@ -601,6 +632,9 @@ function openDetail(id){
 function initFilterPanel(){
   const sel = document.getElementById("fPref");
   sel.innerHTML = `<option value="">指定しない</option>` + PREF_LIST.map(p => `<option value="${p}">${p}</option>`).join("");
+  document.getElementById("fAgency").innerHTML = `<option value="">指定しない</option>` +
+    AGENCIES.map(a => `<option value="${a.key}">${a.label}（${DATA.filter(r => r.g.includes(a.key)).length.toLocaleString()}件）</option>`).join("");
+  document.getElementById("fAgency").addEventListener("change", e => { state.agency = e.target.value; visibleCount = 30; renderResults(); });
 
   document.getElementById("fKeyword").addEventListener("input", e => { state.q = e.target.value.trim(); visibleCount = 30; renderResults(); });
   document.getElementById("fPref").addEventListener("change", e => { state.pref = e.target.value; visibleCount = 30; renderResults(); });
@@ -610,7 +644,8 @@ function initFilterPanel(){
   document.getElementById("sortSelect").addEventListener("change", e => { state.sort = e.target.value; renderResults(); });
   document.getElementById("loadMoreBtn").addEventListener("click", () => { visibleCount += 30; renderResults(); });
   document.getElementById("resetFilters").addEventListener("click", () => {
-    state.q=""; state.pref=""; state.emp=""; state.amt=""; state.openOnly=true; state.sort="deadline";
+    state.q=""; state.pref=""; state.emp=""; state.amt=""; state.agency=""; state.openOnly=true; state.sort="deadline";
+    document.getElementById("fAgency").value="";
     document.getElementById("fKeyword").value="";
     document.getElementById("fPref").value="";
     document.getElementById("fEmp").value="";
@@ -738,7 +773,8 @@ function renderWizardStep(){
   } else if (wz.step === 4){
     const tags = (wz._composedTags && wz._composedTags.length) ? wz._composedTags : wz.tags;
     state.q = tags.join(" ");
-    state.pref = wz.pref; state.emp = wz.emp; state.amt = wz.amt; state.openOnly = true; state.sort = "deadline";
+    state.pref = wz.pref; state.emp = wz.emp; state.amt = wz.amt; state.agency = ""; state.openOnly = true; state.sort = "deadline";
+    document.getElementById("fAgency").value = "";
     visibleCount = 30;
     document.getElementById("fKeyword").value = state.q;
     document.getElementById("fPref").value = state.pref;

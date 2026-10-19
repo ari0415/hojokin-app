@@ -151,9 +151,13 @@ def main():
         encoding="utf-8",
     )
 
+    overrides_path = ROOT / "data" / "overrides.json"
+    overrides = json.loads(overrides_path.read_text(encoding="utf-8")) if overrides_path.exists() else {}
+
     template = template_path.read_text(encoding="utf-8")
     combined_json = json.dumps(combined, ensure_ascii=False, separators=(",", ":"))
-    final_html = template.replace("/*__DATA__*/", combined_json)
+    overrides_json = json.dumps(overrides, ensure_ascii=False, separators=(",", ":"))
+    final_html = template.replace("/*__DATA__*/", combined_json).replace("/*__OVERRIDES__*/", overrides_json)
     out_path.write_text(final_html, encoding="utf-8")
 
     print(f"New local-gov items added: {len(new_items)}")
