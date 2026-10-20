@@ -159,9 +159,16 @@ def main():
     combined_json = json.dumps(combined, ensure_ascii=False, separators=(",", ":"))
     overrides_json = json.dumps(overrides, ensure_ascii=False, separators=(",", ":"))
     build_info = json.dumps({"date": date.today().isoformat()})
+
+    def cache(name):
+        p = ROOT / "data" / name
+        return p.read_text(encoding="utf-8") if p.exists() else "{}"
+
     final_html = (template.replace("/*__DATA__*/", combined_json)
                   .replace("/*__OVERRIDES__*/", overrides_json)
-                  .replace("/*__BUILD_INFO__*/", build_info))
+                  .replace("/*__BUILD_INFO__*/", build_info)
+                  .replace("/*__JDETAIL__*/", cache("jgrants_detail.json"))
+                  .replace("/*__LDETAIL__*/", cache("local_detail.json")))
     out_path.write_text(final_html, encoding="utf-8")
 
     print(f"New local-gov items added: {len(new_items)}")

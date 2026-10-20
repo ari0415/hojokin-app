@@ -203,6 +203,10 @@
   .pill-soon { background: var(--warn-wash); color: var(--warn); }
   .pill-upcoming { background: var(--ai-wash); color: var(--ai); }
   .pill-closed { background: var(--mute-wash); color: var(--mute); }
+  .pill-new { background: var(--ai); color: var(--paper); margin-right: 4px; }
+  .overlay-link.secondary { background: none; color: var(--ai); border: 1px solid var(--line); margin-top: 8px; font-size: 13.5px; padding: 10px; }
+  .overlay-link.secondary:hover { background: var(--ai-wash); }
+  select:disabled { opacity: 0.55; }
   .pill-info { background: var(--gold-wash); color: var(--gold); }
   .src-badge {
     flex: none; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
@@ -338,6 +342,10 @@
           <select id="fPref"></select>
         </div>
         <div class="field">
+          <label for="fCity">市区町村（県・国の制度も表示）</label>
+          <select id="fCity" disabled><option value="">先に都道府県を選択</option></select>
+        </div>
+        <div class="field">
           <label for="fEmp">従業員数（自社の人数）</label>
           <select id="fEmp">
             <option value="">指定しない</option>
@@ -347,6 +355,10 @@
             <option value="900">301〜900名</option>
             <option value="901">901名以上</option>
           </select>
+        </div>
+        <div class="field">
+          <label for="fInd">業種（業種の指定がない制度も表示）</label>
+          <select id="fInd"></select>
         </div>
         <div class="field">
           <label>補助上限額（不明なものも表示）</label>
@@ -378,7 +390,7 @@
             <label for="sortSelect">並び替え</label>
             <select id="sortSelect">
               <option value="deadline">締切が近い順</option>
-              <option value="new">新着順</option>
+              <option value="new">新着順（掲載日）</option>
               <option value="amountDesc">補助額が高い順</option>
             </select>
           </div>
@@ -410,6 +422,8 @@
 
 <script>
 const DATA = /*__DATA__*/;
+// jGrants carries a few operator test entries (e.g. "テスト_…", "【令和X年度】…" starting in year 3026).
+for (let i = DATA.length - 1; i >= 0; i--) if (/^テスト|令和X年度/.test(DATA[i].t)) DATA.splice(i, 1);
 
 // Corrections confirmed against official schedules (data/overrides.json), keyed by record id.
 const OVERRIDES = /*__OVERRIDES__*/;
@@ -435,6 +449,54 @@ DATA.forEach(r => { r.g = AGENCIES.filter(a => a.test(r)).map(a => a.key); });
 
 const BUILD_INFO = /*__BUILD_INFO__*/;
 
+// Per-record detail caches (data/jgrants_detail.json, data/local_detail.json), keyed by record id.
+const JDETAIL = /*__JDETAIL__*/;
+const LDETAIL = /*__LDETAIL__*/;
+
+// 日本標準産業分類（大分類）. jGrants uses these names verbatim; J-Net21 values are mapped by keyword.
+const INDUSTRIES = ["農業、林業","漁業","鉱業、採石業、砂利採取業","建設業","製造業","電気・ガス・熱供給・水道業","情報通信業","運輸業、郵便業","卸売業、小売業","金融業、保険業","不動産業、物品賃貸業","学術研究、専門・技術サービス業","宿泊業、飲食サービス業","生活関連サービス業、娯楽業","教育、学習支援業","医療、福祉","複合サービス事業","サービス業（他に分類されないもの）"];
+const INDUSTRY_PARTS = INDUSTRIES.map(j => j === "サービス業（他に分類されないもの）" ? ["サービス業(他"]
+  : j.split(/[、・]/).map(p => p.length > 2 && p.endsWith("業") ? p.slice(0, -1) : p).filter(p => p.length >= 2));
+function toIndustries(list){
+  const out = new Set();
+  for (const raw of list) {
+    const v = raw.normalize("NFKC");  // J-Net21 writes "農業，林業" with a full-width comma
+    INDUSTRIES.forEach((j, i) => { if (v === j.normalize("NFKC") || INDUSTRY_PARTS[i].some(p => v.includes(p))) out.add(j); });
+  }
+  // A list naming nearly every industry is effectively "no restriction".
+  return out.size >= 15 ? [] : [...out];
+}
+
+DATA.forEach(r => {
+  const d = r.src === "national" ? JDETAIL[r.id] : r.src === "local" ? LDETAIL[r.id] : null;
+  if (!d) return;
+  if (d.removed) {
+    // J-Net21 withdraws a listing once it has ended; treat undated listings that were withdrawn as closed.
+    if (!parseD(r.d)) { r.x = "closed"; r.n = r.n || "支援情報ヘッドラインでの掲載が終了しています（募集は終了している可能性が高いです）。"; }
+    return;
+  }
+  // PowerShell's JSON writer turns one-element arrays into plain strings.
+  const arr = v => Array.isArray(v) ? v : (v ? [v] : []);
+  r.ind = toIndustries(arr(d.ind));
+  if (arr(d.pur).length) r.pur = arr(d.pur);
+  if (d.rate) r.rate = d.rate;
+  if (d.txt) r.txt = d.txt;
+  if (d.srcUrl) r.srcUrl = d.srcUrl;
+  if (d.p) r.p = d.p;
+});
+
+// Municipality from "【〇〇市】…" or the implementing body, for listings scoped to one prefecture.
+function cityOf(r){
+  if (r.a.length !== 1 || r.a[0] === "全国" || r.a[0] === "海外") return "";
+  const m = r.t.match(/^【([^】]+)】/);
+  for (const c of [m && m[1], r.o]) {
+    if (!c) continue;
+    const name = c.replace(/^.{2,3}?[都道府県](?=.+[市区町村]$)/, "");
+    if (/^[^\s・、（(]{1,7}[市区町村]$/.test(name)) return name;
+  }
+  return "";
+}
+
 // NFKC so that ＩＴ/IT, ＬＥＤ/LED, full-width spaces etc. compare equal.
 const norm = s => (s || "").normalize("NFKC").toLowerCase();
 
@@ -450,7 +512,9 @@ function cleanTitle(t){
 
 DATA.forEach(r => {
   r._ct = cleanTitle(r.t);
-  r._h = norm([r.t, r.o, (r.c || []).join(" "), r.g.join(" ")].join(" "));
+  r._h = norm([r.t, r.o, (r.c || []).join(" "), r.g.join(" "), (r.pur || []).join(" "), r.txt || ""].join(" "));
+  r.city = cityOf(r);
+  if (r.src === "local") r.u = r.u.replace("/snavi/articles/", "/snavi2/articles/");
 });
 
 // Group variants of one programme (枠違い・支部違い・jGrantsとヘッドラインの二重掲載) so the list shows each once.
@@ -590,7 +654,15 @@ function matchesEmpCompanySize(rec, sizeBracket){
 function orgOf(rec){ return rec.o || "実施機関の記載なし"; }
 
 /* ---------------- shared filter state ---------------- */
-const state = { q: "", tags: [], pref: "", emp: "", amt: "", agency: "", openOnly: true, sort: "deadline" };
+const state = { q: "", tags: [], pref: "", city: "", emp: "", ind: "", amt: "", agency: "", openOnly: true, sort: "deadline" };
+
+const CITIES_BY_PREF = {};
+DATA.forEach(r => { if (r.city) (CITIES_BY_PREF[r.a[0]] = CITIES_BY_PREF[r.a[0]] || new Set()).add(r.city); });
+
+function isNew(r){
+  const d = parseD(r.p || r.s);
+  return !!d && d <= TODAY && (TODAY - d) / 86400000 <= 7;
+}
 let visibleCount = 30;
 
 function computeFiltered(s){
@@ -601,6 +673,9 @@ function computeFiltered(s){
     if (tagTerms.length && !tagTerms.some(t => rec._h.includes(t))) return false;
     if (s.agency && !rec.g.includes(s.agency)) return false;
     if (!matchesPref(rec, s.pref)) return false;
+    // A business in a city can use that city's programmes plus prefecture-wide and national ones.
+    if (s.city && rec.city && rec.city !== s.city) return false;
+    if (s.ind && rec.ind && rec.ind.length && !rec.ind.includes(s.ind)) return false;
     if (!matchesEmpCompanySize(rec, s.emp)) return false;
     if (s.amt){
       const [lo, hi] = s.amt.split("-").map(Number);
@@ -622,9 +697,10 @@ function computeFiltered(s){
     });
   } else if (s.sort === "new"){
     list.sort((a,b) => {
-      const pa = parseD(a.s), pb = parseD(b.s);
-      const da = pa ? pa.getTime() : 0;
-      const db = pb ? pb.getTime() : 0;
+      // Posting date for J-Net21, call-start date for jGrants; future dates are not "new".
+      const pa = parseD(a.p || a.s), pb = parseD(b.p || b.s);
+      const da = pa && pa <= TODAY ? pa.getTime() : 0;
+      const db = pb && pb <= TODAY ? pb.getTime() : 0;
       return db - da;
     });
   } else if (s.sort === "amountDesc"){
@@ -675,8 +751,9 @@ function statusPill(rec){
   if (st === "upcoming") return `<span class="pill pill-upcoming">受付前</span>`;
   if (st === "closed") return `<span class="pill pill-closed">終了</span>`;
   const du = daysUntil(rec.d);
-  if (du !== null && du <= 7) return `<span class="pill pill-soon">まもなく締切</span>`;
-  return `<span class="pill pill-open">募集中</span>`;
+  const newChip = isNew(rec) ? `<span class="pill pill-new">新着</span>` : "";
+  if (du !== null && du <= 7) return `${newChip}<span class="pill pill-soon">まもなく締切</span>`;
+  return `${newChip}<span class="pill pill-open">募集中</span>`;
 }
 
 function srcBadge(rec){
@@ -708,6 +785,7 @@ function cardHtml(item){
       ${rec.e ? `<span>👥 <b>${empLabel(rec.e)}</b></span>` : ""}
       ${item.maxM != null ? `<span class="amt">上限 ${item.related.length ? "最大" : ""}${fmtAmt(item.maxM)}</span>` : ""}
       <span>${fmtDeadline(rec)}</span>
+      ${rec.ind && rec.ind.length ? `<span>🏭 ${escapeHtml(rec.ind.slice(0, 2).join("・"))}${rec.ind.length > 2 ? " ほか" : ""}</span>` : ""}
       ${rec.g.length ? `<span>🏢 ${escapeHtml(rec.g.join("・"))}</span>` : ""}
       ${item.related.length ? `<span class="related-count">＋同じ制度の別枠・別掲載 ${item.related.length}件</span>` : ""}
     </div>
@@ -768,14 +846,21 @@ function openDetail(id){
     <div class="overlay-org">${escapeHtml(orgOf(rec))}</div>
     <div class="overlay-grid">
       <div class="overlay-row"><div class="k">補助上限額</div><div class="v amt tabular">${fmtAmt(rec.m)}</div></div>
+      ${rec.rate ? `<div class="overlay-row"><div class="k">補助率</div><div class="v">${escapeHtml(rec.rate)}</div></div>` : ""}
       <div class="overlay-row"><div class="k">受付期間</div><div class="v tabular">${fmtDate(rec.s)} 〜 ${fmtDate(rec.d)}</div></div>
+      ${rec.p ? `<div class="overlay-row"><div class="k">掲載日</div><div class="v tabular">${fmtDate(rec.p)}</div></div>` : ""}
       <div class="overlay-row"><div class="k">対象従業員数</div><div class="v">${empLabel(rec.e)}</div></div>
-      <div class="overlay-row"><div class="k">対象地域</div><div class="v">${escapeHtml(areaText)}</div></div>
+      <div class="overlay-row"><div class="k">対象地域</div><div class="v">${escapeHtml(areaText)}${rec.city ? `（${escapeHtml(rec.city)}）` : ""}</div></div>
+      ${rec.ind ? `<div class="overlay-row"><div class="k">対象業種</div><div class="v">${rec.ind.length ? escapeHtml(rec.ind.join(" / ")) : "業種の指定なし"}</div></div>` : ""}
+      ${rec.pur ? `<div class="overlay-row"><div class="k">利用目的</div><div class="v">${escapeHtml(rec.pur.join(" / "))}</div></div>` : ""}
+      ${rec.txt ? `<div class="overlay-row"><div class="k">概要</div><div class="v" style="font-size:13.5px; line-height:1.7;">${escapeHtml(rec.txt)}${rec.txt.length >= 600 ? "…" : ""}</div></div>` : ""}
       ${rec.g.length ? `<div class="overlay-row"><div class="k">実施団体・事務局</div><div class="v">${escapeHtml(rec.g.map(k => AGENCIES.find(a => a.key === k).label).join(" / "))}</div></div>` : ""}
       ${rec.n ? `<div class="overlay-row"><div class="k">補足</div><div class="v">${escapeHtml(rec.n)}</div></div>` : ""}
       ${descRow}
     </div>
-    <a class="overlay-link" href="${escapeHtml(rec.u)}" target="_blank" rel="noopener">${linkLabel}</a>
+    ${rec.srcUrl ? `<a class="overlay-link" href="${escapeHtml(rec.srcUrl)}" target="_blank" rel="noopener">実施機関の公式ページを開く ↗</a>
+    <a class="overlay-link secondary" href="${escapeHtml(rec.u)}" target="_blank" rel="noopener">${linkLabel}</a>`
+    : `<a class="overlay-link" href="${escapeHtml(rec.u)}" target="_blank" rel="noopener">${linkLabel}</a>`}
     ${relatedHtml}
     <div class="overlay-note">${rec.src === "local" ? "本アプリは中小機構「支援情報ヘッドライン」の情報をもとに一覧化した参考情報です。" : rec.src === "maff" ? "本アプリで手動で追加した情報です。" : "本アプリはjGrants公開APIの情報をもとに一覧化した参考情報です。"}申請条件・締切の正式な内容は必ずリンク先の公式ページでご確認ください。</div>
   </div>`;
@@ -785,6 +870,17 @@ function openDetail(id){
 }
 
 /* ---------------- filter panel wiring ---------------- */
+function fillCities(){
+  const sel = document.getElementById("fCity");
+  const cities = state.pref && CITIES_BY_PREF[state.pref] ? [...CITIES_BY_PREF[state.pref]].sort((a, b) => a.localeCompare(b, "ja")) : [];
+  if (!cities.includes(state.city)) state.city = "";
+  sel.disabled = !cities.length;
+  sel.innerHTML = !state.pref ? `<option value="">先に都道府県を選択</option>`
+    : !cities.length ? `<option value="">この県の市区町村の制度は未掲載</option>`
+    : `<option value="">指定しない</option>` + cities.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+  sel.value = state.city;
+}
+
 function initFilterPanel(){
   const sel = document.getElementById("fPref");
   sel.innerHTML = `<option value="">指定しない</option>` + PREF_LIST.map(p => `<option value="${p}">${p}</option>`).join("");
@@ -793,14 +889,19 @@ function initFilterPanel(){
   document.getElementById("fAgency").addEventListener("change", e => { state.agency = e.target.value; visibleCount = 30; renderResults(); });
 
   document.getElementById("fKeyword").addEventListener("input", e => { state.q = e.target.value.trim(); visibleCount = 30; renderResults(); });
-  document.getElementById("fPref").addEventListener("change", e => { state.pref = e.target.value; visibleCount = 30; renderResults(); });
+  document.getElementById("fPref").addEventListener("change", e => { state.pref = e.target.value; fillCities(); visibleCount = 30; renderResults(); });
+  document.getElementById("fCity").addEventListener("change", e => { state.city = e.target.value; visibleCount = 30; renderResults(); });
+  document.getElementById("fInd").innerHTML = `<option value="">指定しない</option>` + INDUSTRIES.map(j => `<option value="${j}">${j}</option>`).join("");
+  document.getElementById("fInd").addEventListener("change", e => { state.ind = e.target.value; visibleCount = 30; renderResults(); });
   document.getElementById("fEmp").addEventListener("change", e => { state.emp = e.target.value; visibleCount = 30; renderResults(); });
   document.getElementById("fAmt").addEventListener("change", e => { state.amt = e.target.value; visibleCount = 30; renderResults(); });
   document.getElementById("fOpenOnly").addEventListener("change", e => { state.openOnly = e.target.checked; visibleCount = 30; renderResults(); });
   document.getElementById("sortSelect").addEventListener("change", e => { state.sort = e.target.value; renderResults(); });
   document.getElementById("loadMoreBtn").addEventListener("click", () => { visibleCount += 30; renderResults(); });
   document.getElementById("resetFilters").addEventListener("click", () => {
-    state.q=""; state.tags=[]; state.pref=""; state.emp=""; state.amt=""; state.agency=""; state.openOnly=true; state.sort="deadline";
+    state.q=""; state.tags=[]; state.pref=""; state.city=""; state.emp=""; state.ind=""; state.amt=""; state.agency=""; state.openOnly=true; state.sort="deadline";
+    document.getElementById("fInd").value="";
+    fillCities();
     document.getElementById("fAgency").value="";
     document.getElementById("fKeyword").value="";
     document.getElementById("fPref").value="";
@@ -922,11 +1023,13 @@ function renderWizardStep(){
   } else if (wz.step === 4){
     state.tags = wz.tags.slice();
     state.q = wz.freeText || "";
-    state.pref = wz.pref; state.emp = wz.emp; state.amt = wz.amt; state.agency = ""; state.openOnly = true; state.sort = "deadline";
+    state.pref = wz.pref; state.city = ""; state.emp = wz.emp; state.ind = ""; state.amt = wz.amt; state.agency = ""; state.openOnly = true; state.sort = "deadline";
     document.getElementById("fAgency").value = "";
+    document.getElementById("fInd").value = "";
     visibleCount = 30;
     document.getElementById("fKeyword").value = state.q;
     document.getElementById("fPref").value = state.pref;
+    fillCities();
     document.getElementById("fEmp").value = state.emp;
     document.getElementById("fAmt").value = state.amt;
     document.getElementById("fOpenOnly").checked = true;
