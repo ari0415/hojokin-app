@@ -31,7 +31,6 @@ function Html-ToText($html) {
   $t = [System.Net.WebUtility]::HtmlDecode($t)
   return ($t -replace '\s+', ' ').Trim()
 }
-function Cap($s, $n) { if ($s.Length -gt $n) { return $s.Substring(0, $n) } return $s }
 function Split-List($s) {
   if (-not $s) { return ,@() }
   # Leading comma keeps a one-element result an array (PowerShell unrolls it otherwise).
@@ -68,10 +67,9 @@ $ld = To-Hashtable (Read-Json $ldPath)
 # ---- jGrants detail API ----
 $jClient = [System.Net.Http.HttpClient]::new()
 $jClient.Timeout = [TimeSpan]::FromSeconds(30)
-$natTargets = @($nat | Where-Object { (-not $_.d -or $_.d -ge $NationalSince) -and -not $jd.ContainsKey($_.id) })
+# Entries without `full` predate full-text caching (text was capped or dropped for closed calls); refetch them.
+$natTargets = @($nat | Where-Object { (-not $_.d -or $_.d -ge $NationalSince) -and -not ($jd.ContainsKey($_.id) -and $jd[$_.id].full) })
 Write-Output "jGrants detail to fetch: $($natTargets.Count)"
-$openIds = @{}
-$nat | Where-Object { -not $_.d -or $_.d -ge $Today } | ForEach-Object { $openIds[$_.id] = $true }
 for ($i = 0; $i -lt $natTargets.Count; $i += 100) {
   $chunk = $natTargets[$i..([Math]::Min($i + 100, $natTargets.Count) - 1)]
   $urlById = @{}
@@ -83,11 +81,14 @@ for ($i = 0; $i -lt $natTargets.Count; $i += 100) {
     $d = ($r.body | ConvertFrom-Json).result[0]
     if (-not $d) { continue }
     $text = (Html-ToText $d.detail) -replace '^■?目的・概要\s*', ''
+    $extra = (@($d.subsidy_catch_phrase, $d.outline_of_grant) | ForEach-Object { Html-ToText $_ } | Where-Object { $_ }) -join ' '
     $jd[$id] = @{
       ind  = Split-List $d.industry
       pur  = Split-List $d.use_purpose
       rate = $d.subsidy_rate
-      txt  = $(if ($openIds.ContainsKey($id)) { Cap $text 1200 } else { "" })
+      txt  = $text
+      kw   = $extra
+      full = $true
     }
   }
   Save-Json $jdPath $jd
@@ -103,7 +104,7 @@ $lClient.DefaultRequestHeaders.UserAgent.ParseAdd("hojokin-compass/1.0")
 $recheckBefore = ([DateTime]$Today).AddDays(-$LocalRecheckDays).ToString("yyyy-MM-dd")
 $locTargets = @($loc | Where-Object {
   ($_.d -eq "unknown" -or -not $_.d -or $_.d -ge $Today) -and
-  (-not $ld.ContainsKey($_.id) -or (-not $ld[$_.id].removed -and $ld[$_.id].checked -lt $recheckBefore))
+  (-not $ld.ContainsKey($_.id) -or (-not $ld[$_.id].removed -and ($ld[$_.id].checked -lt $recheckBefore -or ($ld[$_.id].txt -and $ld[$_.id].txt.Length -ge 600))))
 })
 Write-Output "J-Net21 articles to fetch: $($locTargets.Count)"
 for ($i = 0; $i -lt $locTargets.Count; $i += 100) {
@@ -128,7 +129,7 @@ for ($i = 0; $i -lt $locTargets.Count; $i += 100) {
       removed = $false
       checked = $Today
       ind     = (Split-List $(if ($ind -and $ind -ne "指定無し") { $ind -replace '[、,]', ' / ' } else { "" }))
-      txt     = Cap ($body -replace '申込方法ほか詳細情報は、「詳細情報を見る」からご確認ください。', '').Trim() 600
+      txt     = ($body -replace '申込方法ほか詳細情報は、「詳細情報を見る」からご確認(ください|下さい)。', '').Trim()
       srcUrl  = $src
       p       = $pub
     }

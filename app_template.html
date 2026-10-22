@@ -494,6 +494,7 @@ DATA.forEach(r => {
   if (arr(d.pur).length) r.pur = arr(d.pur);
   if (d.rate) r.rate = d.rate;
   if (d.txt) r.txt = d.txt;
+  if (d.kw) r.kw = d.kw;
   // Some long jGrants windows are post-adoption procedures; trust the body when it says intake has ended.
   const ended = r.txt && r.txt.match(/(受付|募集|申込|申請|公募)(受付)?(は|を)?(すべて|全て)?終了(いた)?し(ました|ています)|予算(額)?(の上限)?に達した(ため|ので)[^。]{0,30}(終了|締め切)|(受付|募集)を?締め切りました/);
   if (ended && r.x !== "closed") { r.x = "closed"; r.n = r.n || `公式の記載に「${ended[0]}」とあります。`; }
@@ -528,7 +529,8 @@ function cleanTitle(t){
 
 DATA.forEach(r => {
   r._ct = cleanTitle(r.t);
-  r._h = norm([r.t, r.o, (r.c || []).join(" "), r.g.join(" "), (r.pur || []).join(" "), r.txt || ""].join(" "));
+  // r.ind is only set for listings that restrict industries, so "卸売" finds programmes that name wholesale explicitly.
+  r._h = norm([r.t, r.o, (r.c || []).join(" "), r.g.join(" "), (r.pur || []).join(" "), (r.ind || []).join(" "), r.kw || "", r.txt || ""].join(" "));
   r.city = cityOf(r);
   if (r.src === "local") r.u = r.u.replace("/snavi/articles/", "/snavi2/articles/");
 });
