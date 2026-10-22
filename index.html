@@ -174,6 +174,7 @@
   /* ---- Results ---- */
   .results-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
   .results-count { font-size: 14px; color: var(--ink-soft); }
+  .results-note { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
   .results-count b { color: var(--ink); font-size: 16px; }
   .sort-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
   .sort-row select { width: auto; padding: 6px 8px; font-size: 13px; }
@@ -406,7 +407,10 @@
 
       <main>
         <div class="results-head">
-          <div class="results-count">全 <b class="tabular" id="rCount">0</b> 件がヒット</div>
+          <div>
+            <div class="results-count">全 <b class="tabular" id="rCount">0</b> 件がヒット</div>
+            <div class="results-note" id="opNote"></div>
+          </div>
           <div class="sort-row">
             <label for="sortSelect">並び替え</label>
             <select id="sortSelect">
@@ -447,7 +451,7 @@ const DATA = [{"id":"a0WJ200000CDGuDMAX","t":"【環境省】浄化槽システ�
 for (let i = DATA.length - 1; i >= 0; i--) if (/^テスト|令和X年度/.test(DATA[i].t)) DATA.splice(i, 1);
 
 // Corrections confirmed against official schedules (data/overrides.json), keyed by record id.
-const OVERRIDES = {"a0WJ200000CDVkeMAH":{"s":"unknown","d":"unknown","x":"closed","n":"中小機構「補助金活用ナビ」の公式スケジュールでは、ものづくり補助金は第23次をもって受付を終了し、令和8年度からは「新事業進出・ものづくり商業サービス補助金」として公募されています。jGrants上の受付期間は採択後の手続き用と考えられます。（2026年10月16日更新の公式スケジュールで確認）"},"a0WJ200000CDX4vMAH":{"s":"unknown","d":"unknown","x":"closed","n":"中小機構「補助金活用ナビ」の公式スケジュールでは、ものづくり補助金は第23次をもって受付を終了し、令和8年度からは「新事業進出・ものづくり商業サービス補助金」として公募されています。jGrants上の受付期間は採択後の手続き用と考えられます。（2026年10月16日更新の公式スケジュールで確認）"},"a0WJ200000CDYimMAH":{"s":"2025-12-26","d":"2026-01-30","x":"closed","n":"第22次の申請受付は2025年12月26日〜2026年1月30日17時（中小機構「補助金活用ナビ」公式スケジュール）。jGrants上の受付期間は採択後の手続き用と考えられます。"},"a0WJ200000CDdtMMAT":{"s":"2026-04-03","d":"2026-05-08","x":"closed","n":"第23次の申請受付は2026年4月3日〜5月8日17時で、ものづくり補助金としての最終回（中小機構「補助金活用ナビ」公式スケジュール）。後継は「新事業進出・ものづくり商業サービス補助金」。"},"https://j-net21.smrj.go.jp/snavi/articles/180135":{"s":null,"d":null,"n":"カタログ注文型は当面の間、随時受付中（メンテナンス期間を除く）。採択・交付決定は申請から概ね1〜2か月程度（中小機構「補助金活用ナビ」公式スケジュール、2026年10月16日更新時点）。"}};
+const OVERRIDES = {"a0WJ200000CDVkeMAH":{"s":"unknown","d":"unknown","x":"closed","n":"中小機構「補助金活用ナビ」の公式スケジュールでは、ものづくり補助金は第23次をもって受付を終了し、令和8年度からは「新事業進出・ものづくり商業サービス補助金」として公募されています。jGrants上の受付期間は採択後の手続き用と考えられます。（2026年10月16日更新の公式スケジュールで確認）"},"a0WJ200000CDX4vMAH":{"s":"unknown","d":"unknown","x":"closed","n":"中小機構「補助金活用ナビ」の公式スケジュールでは、ものづくり補助金は第23次をもって受付を終了し、令和8年度からは「新事業進出・ものづくり商業サービス補助金」として公募されています。jGrants上の受付期間は採択後の手続き用と考えられます。（2026年10月16日更新の公式スケジュールで確認）"},"a0WJ200000CDYimMAH":{"s":"2025-12-26","d":"2026-01-30","x":"closed","n":"第22次の申請受付は2025年12月26日〜2026年1月30日17時（中小機構「補助金活用ナビ」公式スケジュール）。jGrants上の受付期間は採択後の手続き用と考えられます。"},"a0WJ200000CDdtMMAT":{"s":"2026-04-03","d":"2026-05-08","x":"closed","n":"第23次の申請受付は2026年4月3日〜5月8日17時で、ものづくり補助金としての最終回（中小機構「補助金活用ナビ」公式スケジュール）。後継は「新事業進出・ものづくり商業サービス補助金」。"},"https://j-net21.smrj.go.jp/snavi/articles/180135":{"s":null,"d":null,"n":"カタログ注文型は当面の間、随時受付中（メンテナンス期間を除く）。採択・交付決定は申請から概ね1〜2か月程度（中小機構「補助金活用ナビ」公式スケジュール、2026年10月16日更新時点）。"},"https://www.maff.go.jp/j/supply/hozyo/nousan/2601013_161-1.html":{"op":false,"who":"米粉製粉事業者又は食品製造事業者（公募ページ「事業の概要」より）"},"https://www.maff.go.jp/j/supply/hozyo/nousan/261009_160-1.html":{"op":false,"who":"農業者団体又は大豆の販売又は加工を業とする者（公募要領 第4 応募者の要件）"},"https://www.maff.go.jp/j/supply/hozyo/nousan/261009_111_1.html":{"op":true,"who":"都道府県、市町村、農業者の組織する団体、公社、地域農業再生協議会、特認団体（受益農家3戸以上）（公募要領 別記第1の2）"},"https://www.maff.go.jp/j/supply/hozyo/nousan/260828_111_1.html":{"op":true,"who":"都道府県、市町村、農業者の組織する団体、公社、地域農業再生協議会、特認団体（受益農家3戸以上）（第2回公募の公募要領 別記第1の2）"},"https://j-net21.smrj.go.jp/snavi/articles/193884":{"op":true,"who":"都道府県、市町村、農業者の組織する団体、公社、地域農業再生協議会、特認団体（受益農家3戸以上）（農林水産省 公募要領 別記第1の2）"},"a0WJ200000CDYDCMA5":{"op":true,"who":"都道府県、市町村、地域協議会、農業者団体、農業者（2者以上）（jGrants掲載の事業実施主体）"},"https://www.maff.go.jp/j/supply/hozyo/nousan/260306_120_1.html":{"op":true,"who":"全米販などの団体を事業実施主体として選ぶ公募。組合員は、選ばれた事業実施主体（全米販）が行う公募に申請します。"}};
 DATA.forEach(r => { if (OVERRIDES[r.id]) Object.assign(r, OVERRIDES[r.id]); });
 
 // Only links confirmed from official sources: SMRJ-run subsidy sites live under smrj.go.jp;
@@ -638,6 +642,10 @@ function classifyGov(r, contact){
   return ["不明", ""];
 }
 const GOV_KEYS = [...MAIN_MINISTRIES, "その他の省庁", "自治体", "政府系金融機関・信用保証協会", "商工団体", "不明"];
+// Calls that pick the body which runs a programme (事務局・執行団体・基金設置法人…) rather than the businesses
+// that use it. "間接補助事業者公募" is the opposite: businesses apply to the selected body.
+// data/overrides.json sets `op` (and `who`, the eligible applicants) for calls checked against their 公募要領.
+const OPERATOR_CALL_RE = /執行団体|基金(設置|管理)(法人|団体)|支援機関の(公募|募集)|事務局(の)?(公募|募集|選定)|事務局を(公募|募集)|補助事業者（事務局|運営事業者の(公募|募集)|指定事業者の(公募|募集)/;
 
 DATA.forEach(r => {
   r._ct = cleanTitle(r.t);
@@ -646,6 +654,7 @@ DATA.forEach(r => {
   const contact = sectionBy(secs, /問(い)?合(わ)?せ|連絡先|申請先|提出先|事務局$/);
   r.impl = sectionBy(secs, /事業実施主体|実施主体/);
   [r.gov, r.govLabel] = classifyGov(r, contact);
+  if (typeof r.op !== "boolean") r.op = OPERATOR_CALL_RE.test(r.t) && !/間接補助事業者/.test(r.t);
   // 窓口: J-Net21's 実施機関 and the MAFF 担当部局 are reliable; for jGrants use the 問合せ先 section.
   r.win = r.src === "local" || r.src === "maffkobo" ? (r.o || "") : contact ? contactHead(contact) : "";
   r.winFull = r.src === "local" ? "" : contact;
@@ -805,6 +814,7 @@ function computeFiltered(s){
   const terms = norm(s.q).split(/\s+/).filter(Boolean);
   const tagTerms = (s.tags || []).flatMap(t => TAG_TERMS[t] || [norm(t)]);
   let list = DATA.filter(rec => {
+    if (rec.op) return false;
     if (!terms.every(t => rec._h.includes(t))) return false;
     if (tagTerms.length && !tagTerms.some(t => rec._h.includes(t))) return false;
     if (s.agency && !rec.g.includes(s.agency)) return false;
@@ -1052,6 +1062,7 @@ function openDetail(id){
       <div class="overlay-row"><div class="k">所管（どの省庁・自治体の事業か）</div><div class="v">${rec.gov !== "不明"
         ? `<span class="gov-chip${rec.gov === "農林水産省" ? " gov-maff" : ""}">${escapeHtml(rec.govLabel)}</span><span class="gov-note">タイトル・問合せ先・本文から自動判定</span>`
         : `判定できませんでした。下の問合せ先や公式ページでご確認ください。`}</div></div>
+      ${rec.who ? `<div class="overlay-row"><div class="k">応募できる者（公募要領で確認）</div><div class="v">${escapeHtml(rec.who)}</div></div>` : ""}
       ${rec.impl ? `<div class="overlay-row"><div class="k">事業実施主体（公募の記載）</div><div class="v">${escapeHtml(rec.impl)}</div></div>` : ""}
       ${rec.src === "maffkobo" && rec.o ? `<div class="overlay-row"><div class="k">担当部局</div><div class="v">${escapeHtml(rec.o)}</div></div>` : ""}
       ${rec.winFull || rec.win ? `<div class="overlay-row"><div class="k">${rec.src === "local" ? "実施機関" : "問合せ先・事務局"}</div><div class="v">${linkify(escapeHtml(lineBreakMeta(rec.winFull || rec.win)))}</div></div>` : ""}
@@ -1099,10 +1110,10 @@ function initFilterPanel(){
   const sel = document.getElementById("fPref");
   sel.innerHTML = `<option value="">指定しない</option>` + PREF_LIST.map(p => `<option value="${p}">${p}</option>`).join("");
   document.getElementById("fAgency").innerHTML = `<option value="">指定しない</option>` +
-    AGENCIES.map(a => `<option value="${a.key}">${a.label}（${DATA.filter(r => r.g.includes(a.key)).length.toLocaleString()}件）</option>`).join("");
+    AGENCIES.map(a => `<option value="${a.key}">${a.label}（${DATA.filter(r => r.g.includes(a.key) && !r.op).length.toLocaleString()}件）</option>`).join("");
   document.getElementById("fAgency").addEventListener("change", e => { state.agency = e.target.value; visibleCount = 30; renderResults(); });
   document.getElementById("fGov").innerHTML = `<option value="">指定しない</option>` +
-    GOV_KEYS.map(k => `<option value="${k}">${k === "不明" ? "判定できないもの" : k}（${DATA.filter(r => r.gov === k).length.toLocaleString()}件）</option>`).join("");
+    GOV_KEYS.map(k => `<option value="${k}">${k === "不明" ? "判定できないもの" : k}（${DATA.filter(r => r.gov === k && !r.op).length.toLocaleString()}件）</option>`).join("");
   document.getElementById("fGov").addEventListener("change", e => { state.gov = e.target.value; visibleCount = 30; renderResults(); });
 
   document.getElementById("fKeyword").addEventListener("input", e => { state.q = e.target.value.trim(); visibleCount = 30; renderResults(); });
@@ -1271,8 +1282,11 @@ function initWizardNav(){
 
 /* ---------------- boot ---------------- */
 function boot(){
-  document.getElementById("statTotal").textContent = DATA.length.toLocaleString();
-  const openCount = collapseGroups(DATA.filter(r => subsidyStatus(r) !== "closed")).length;
+  const usable = DATA.filter(r => !r.op);
+  document.getElementById("statTotal").textContent = usable.length.toLocaleString();
+  const openCount = collapseGroups(usable.filter(r => subsidyStatus(r) !== "closed")).length;
+  document.getElementById("opNote").textContent =
+    `事業者が直接応募できない公募（事務局・執行団体の選定など）${(DATA.length - usable.length).toLocaleString()}件は表示していません`;
   document.getElementById("statOpen").textContent = openCount.toLocaleString();
   document.getElementById("footUpdated").textContent = "データ取得日: " + fmtDate(BUILD_INFO.date);
   initFilterPanel();
