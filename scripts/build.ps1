@@ -24,7 +24,8 @@ $html = (Read-Text "app_template.html" "").
   Replace('/*__OVERRIDES__*/', $overrides).
   Replace('/*__BUILD_INFO__*/', "{`"date`":`"$DataDate`"}").
   Replace('/*__JDETAIL__*/', (Read-Text "data\jgrants_detail.json" "{}")).
-  Replace('/*__LDETAIL__*/', (Read-Text "data\local_detail.json" "{}"))
+  Replace('/*__LDETAIL__*/', (Read-Text "data\local_detail.json" "{}")).
+  Replace('/*__MAFFELIG__*/', (Read-Text "data\maff_eligibility.json" "{}"))
 
 $left = [regex]::Matches($html, '/\*__[A-Z_]+__\*/').Count
 if ($left -gt 0) { throw "unreplaced placeholders: $left" }

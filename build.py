@@ -170,7 +170,8 @@ def main():
                   .replace("/*__OVERRIDES__*/", overrides_json)
                   .replace("/*__BUILD_INFO__*/", build_info)
                   .replace("/*__JDETAIL__*/", cache("jgrants_detail.json"))
-                  .replace("/*__LDETAIL__*/", cache("local_detail.json")))
+                  .replace("/*__LDETAIL__*/", cache("local_detail.json"))
+                  .replace("/*__MAFFELIG__*/", cache("maff_eligibility.json")))
     out_path.write_text(final_html, encoding="utf-8")
 
     print(f"New local-gov items added: {len(new_items)}")

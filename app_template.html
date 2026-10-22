@@ -175,6 +175,7 @@
   .results-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
   .results-count { font-size: 14px; color: var(--ink-soft); }
   .results-note { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; }
+  .op-chip { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 4px; background: var(--mute-wash); color: var(--mute); }
   .results-count b { color: var(--ink); font-size: 16px; }
   .sort-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
   .sort-row select { width: auto; padding: 6px 8px; font-size: 13px; }
@@ -402,6 +403,10 @@
           <input type="checkbox" id="fOpenOnly" checked />
           <label for="fOpenOnly">募集中・受付前のみ表示</label>
         </div>
+        <div class="check-row">
+          <input type="checkbox" id="fShowOp" />
+          <label for="fShowOp">事業者が直接応募できない公募も表示</label>
+        </div>
         <button class="reset-link" id="resetFilters">条件をリセット</button>
       </aside>
 
@@ -477,6 +482,8 @@ const BUILD_INFO = /*__BUILD_INFO__*/;
 // Per-record detail caches (data/jgrants_detail.json, data/local_detail.json), keyed by record id.
 const JDETAIL = /*__JDETAIL__*/;
 const LDETAIL = /*__LDETAIL__*/;
+// 応募要件 text OCR'd from each MAFF call's 公募要領 (data/maff_eligibility.json), keyed by record id.
+const MAFFELIG = /*__MAFFELIG__*/;
 const TXT_CAP = { national: 1200, local: 600 };
 
 // 日本標準産業分類（大分類）. jGrants uses these names verbatim; J-Net21 values are mapped by keyword.
@@ -646,6 +653,25 @@ const GOV_KEYS = [...MAIN_MINISTRIES, "その他の省庁", "自治体", "政府
 // that use it. "間接補助事業者公募" is the opposite: businesses apply to the selected body.
 // data/overrides.json sets `op` (and `who`, the eligible applicants) for calls checked against their 公募要領.
 const OPERATOR_CALL_RE = /執行団体|基金(設置|管理)(法人|団体)|支援機関の(公募|募集)|事務局(の)?(公募|募集|選定)|事務局を(公募|募集)|補助事業者（事務局|運営事業者の(公募|募集)|指定事業者の(公募|募集)/;
+// From a MAFF 応募要件 excerpt. Hiding is only for confident cases, because a wrongly hidden call is worse
+// than an extra one (and the "直接応募できない公募も表示" checkbox brings them back):
+//  - applicants named are only public bodies / farmer groups / associations, or
+//  - the call is for promotion/research/training work done for the sector and no business applicant is named.
+// "事業者" alone is not a signal: it often names the beneficiaries ("…に取り組む飲食事業者を対象に").
+const BUSINESS_APPLICANT_RE = /民間事業者|民間企業|株式会社|を業とする者|業を営む者|製造業者|加工業者|販売業者|卸売業者|小売業者|輸出事業者|事業協同組合|商工組合|[製精糖粉菓品]企業|拠点事業者|実需者|食品製造事業者|食品事業者(?!の組織)/;
+const GROUP_APPLICANT_RE = /都道府県|市町村|地方公共団体|農業者(の組織する)?団体|農業協同組合|生産者団体|協議会|全国団体|全国組織|社団法人|財団法人|民間団体/;
+// Promotion/research/support work done for the sector: a company may be eligible, but it is not the
+// company's own project — unless the excerpt shows one (handling its own stock, installing its own equipment…).
+const SECTOR_ROLE_TITLE_RE = /推進事業|推進支援|推進[（(]|推進組織|調査|検証|検討事業|体制構築|技術協力|モニタリング|研修|普及|啓発|情報発信|人材育成|土台づくり/;
+const OWN_PROJECT_RE = /を業とする者|業を営む者|拠点事業者|実需者|自らの|自ら行う|施設(の)?整備|設備(の)?(導入|整備|増設)|機械(の)?導入|機器(の)?導入|保管|投資/;
+function applicantOp(text, title){
+  const t = text.replace(/中小企業等協同組合/g, "協同組合").replace(/民間事業者の事業計画書/g, "");
+  if (/全国団体向け/.test(title)) return true;
+  if (SECTOR_ROLE_TITLE_RE.test(title) && !OWN_PROJECT_RE.test(t)) return true;
+  if (BUSINESS_APPLICANT_RE.test(t)) return false;
+  if (GROUP_APPLICANT_RE.test(t)) return true;
+  return undefined;
+}
 
 DATA.forEach(r => {
   r._ct = cleanTitle(r.t);
@@ -654,7 +680,13 @@ DATA.forEach(r => {
   const contact = sectionBy(secs, /問(い)?合(わ)?せ|連絡先|申請先|提出先|事務局$/);
   r.impl = sectionBy(secs, /事業実施主体|実施主体/);
   [r.gov, r.govLabel] = classifyGov(r, contact);
-  if (typeof r.op !== "boolean") r.op = OPERATOR_CALL_RE.test(r.t) && !/間接補助事業者/.test(r.t);
+  const elig = r.src === "maffkobo" && MAFFELIG[r.id];
+  const eligText = elig && elig.who && !elig.who.startsWith("(") ? elig.who.normalize("NFKC") : "";
+  if (eligText) r.whoAuto = eligText.slice(0, 260);
+  if (typeof r.op !== "boolean") {
+    const fromText = eligText ? applicantOp(eligText, r.t) : undefined;
+    r.op = OPERATOR_CALL_RE.test(r.t) && !/間接補助事業者/.test(r.t) || fromText === true || /全国団体向け/.test(r.t);
+  }
   // 窓口: J-Net21's 実施機関 and the MAFF 担当部局 are reliable; for jGrants use the 問合せ先 section.
   r.win = r.src === "local" || r.src === "maffkobo" ? (r.o || "") : contact ? contactHead(contact) : "";
   r.winFull = r.src === "local" ? "" : contact;
@@ -799,7 +831,7 @@ function matchesEmpCompanySize(rec, sizeBracket){
 
 
 /* ---------------- shared filter state ---------------- */
-const state = { q: "", tags: [], pref: "", city: "", emp: "", ind: "", amt: "", agency: "", gov: "", openOnly: true, sort: "deadline" };
+const state = { q: "", tags: [], pref: "", city: "", emp: "", ind: "", amt: "", agency: "", gov: "", openOnly: true, showOp: false, sort: "deadline" };
 
 const CITIES_BY_PREF = {};
 DATA.forEach(r => { if (r.city) (CITIES_BY_PREF[r.a[0]] = CITIES_BY_PREF[r.a[0]] || new Set()).add(r.city); });
@@ -814,7 +846,7 @@ function computeFiltered(s){
   const terms = norm(s.q).split(/\s+/).filter(Boolean);
   const tagTerms = (s.tags || []).flatMap(t => TAG_TERMS[t] || [norm(t)]);
   let list = DATA.filter(rec => {
-    if (rec.op) return false;
+    if (rec.op && !s.showOp) return false;
     if (!terms.every(t => rec._h.includes(t))) return false;
     if (tagTerms.length && !tagTerms.some(t => rec._h.includes(t))) return false;
     if (s.agency && !rec.g.includes(s.agency)) return false;
@@ -997,6 +1029,7 @@ function cardHtml(item){
       <span>${fmtDeadline(rec)}</span>
       ${rec.ind && rec.ind.length ? `<span>🏭 ${escapeHtml(rec.ind.slice(0, 2).join("・"))}${rec.ind.length > 2 ? " ほか" : ""}</span>` : ""}
       ${rec.g.length ? `<span>🏢 ${escapeHtml(rec.g.join("・"))}</span>` : ""}
+      ${rec.op ? `<span class="op-chip">事業者が直接応募できない公募</span>` : ""}
       ${item.related.length ? `<span class="related-count">＋同じ制度の別枠・別掲載 ${item.related.length}件</span>` : ""}
     </div>
   </li>`;
@@ -1062,7 +1095,8 @@ function openDetail(id){
       <div class="overlay-row"><div class="k">所管（どの省庁・自治体の事業か）</div><div class="v">${rec.gov !== "不明"
         ? `<span class="gov-chip${rec.gov === "農林水産省" ? " gov-maff" : ""}">${escapeHtml(rec.govLabel)}</span><span class="gov-note">タイトル・問合せ先・本文から自動判定</span>`
         : `判定できませんでした。下の問合せ先や公式ページでご確認ください。`}</div></div>
-      ${rec.who ? `<div class="overlay-row"><div class="k">応募できる者（公募要領で確認）</div><div class="v">${escapeHtml(rec.who)}</div></div>` : ""}
+      ${rec.who ? `<div class="overlay-row"><div class="k">応募できる者（公募要領で確認）</div><div class="v">${escapeHtml(rec.who)}</div></div>`
+        : rec.whoAuto ? `<div class="overlay-row"><div class="k">応募要件（公募要領から自動抽出・読み取り誤りを含む場合あり）</div><div class="v">${escapeHtml(rec.whoAuto)}…</div></div>` : ""}
       ${rec.impl ? `<div class="overlay-row"><div class="k">事業実施主体（公募の記載）</div><div class="v">${escapeHtml(rec.impl)}</div></div>` : ""}
       ${rec.src === "maffkobo" && rec.o ? `<div class="overlay-row"><div class="k">担当部局</div><div class="v">${escapeHtml(rec.o)}</div></div>` : ""}
       ${rec.winFull || rec.win ? `<div class="overlay-row"><div class="k">${rec.src === "local" ? "実施機関" : "問合せ先・事務局"}</div><div class="v">${linkify(escapeHtml(lineBreakMeta(rec.winFull || rec.win)))}</div></div>` : ""}
@@ -1124,10 +1158,12 @@ function initFilterPanel(){
   document.getElementById("fEmp").addEventListener("change", e => { state.emp = e.target.value; visibleCount = 30; renderResults(); });
   document.getElementById("fAmt").addEventListener("change", e => { state.amt = e.target.value; visibleCount = 30; renderResults(); });
   document.getElementById("fOpenOnly").addEventListener("change", e => { state.openOnly = e.target.checked; visibleCount = 30; renderResults(); });
+  document.getElementById("fShowOp").addEventListener("change", e => { state.showOp = e.target.checked; visibleCount = 30; renderResults(); });
   document.getElementById("sortSelect").addEventListener("change", e => { state.sort = e.target.value; renderResults(); });
   document.getElementById("loadMoreBtn").addEventListener("click", () => { visibleCount += 30; renderResults(); });
   document.getElementById("resetFilters").addEventListener("click", () => {
-    state.q=""; state.tags=[]; state.pref=""; state.city=""; state.emp=""; state.ind=""; state.amt=""; state.agency=""; state.gov=""; state.openOnly=true; state.sort="deadline";
+    state.q=""; state.tags=[]; state.pref=""; state.city=""; state.emp=""; state.ind=""; state.amt=""; state.agency=""; state.gov=""; state.openOnly=true; state.showOp=false; state.sort="deadline";
+    document.getElementById("fShowOp").checked=false;
     document.getElementById("fInd").value="";
     fillCities();
     document.getElementById("fAgency").value="";
@@ -1286,7 +1322,7 @@ function boot(){
   document.getElementById("statTotal").textContent = usable.length.toLocaleString();
   const openCount = collapseGroups(usable.filter(r => subsidyStatus(r) !== "closed")).length;
   document.getElementById("opNote").textContent =
-    `事業者が直接応募できない公募（事務局・執行団体の選定など）${(DATA.length - usable.length).toLocaleString()}件は表示していません`;
+    `事業者が直接応募できない公募（事務局・執行団体・自治体や農業者団体向けなど）${(DATA.length - usable.length).toLocaleString()}件は表示していません。条件欄のチェックで表示できます。`;
   document.getElementById("statOpen").textContent = openCount.toLocaleString();
   document.getElementById("footUpdated").textContent = "データ取得日: " + fmtDate(BUILD_INFO.date);
   initFilterPanel();
