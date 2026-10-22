@@ -193,7 +193,11 @@
   .card:hover, .card:focus-visible { box-shadow: var(--shadow); border-color: var(--ai-soft); }
   .card-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
   .card-title { font-weight: 700; font-size: 15px; line-height: 1.45; text-wrap: balance; }
-  .card-org { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+  .card-org { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .gov-chip { font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 4px; background: var(--ai-wash); color: var(--ai); white-space: nowrap; }
+  .gov-chip.gov-maff { background: var(--ok-wash); color: var(--ok); }
+  .gov-win { overflow-wrap: anywhere; }
+  .gov-note { font-size: 11.5px; color: var(--ink-soft); margin-left: 8px; }
   .pill {
     flex: none;
     font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em;
@@ -386,6 +390,10 @@
           </div>
         </div>
         <div class="field">
+          <label for="fGov">所管（省庁・自治体）</label>
+          <select id="fGov"></select>
+        </div>
+        <div class="field">
           <label for="fAgency">実施団体・事務局</label>
           <select id="fAgency"></select>
         </div>
@@ -465,6 +473,7 @@ const BUILD_INFO = /*__BUILD_INFO__*/;
 // Per-record detail caches (data/jgrants_detail.json, data/local_detail.json), keyed by record id.
 const JDETAIL = /*__JDETAIL__*/;
 const LDETAIL = /*__LDETAIL__*/;
+const TXT_CAP = { national: 1200, local: 600 };
 
 // 日本標準産業分類（大分類）. jGrants uses these names verbatim; J-Net21 values are mapped by keyword.
 const INDUSTRIES = ["農業、林業","漁業","鉱業、採石業、砂利採取業","建設業","製造業","電気・ガス・熱供給・水道業","情報通信業","運輸業、郵便業","卸売業、小売業","金融業、保険業","不動産業、物品賃貸業","学術研究、専門・技術サービス業","宿泊業、飲食サービス業","生活関連サービス業、娯楽業","教育、学習支援業","医療、福祉","複合サービス事業","サービス業（他に分類されないもの）"];
@@ -495,6 +504,8 @@ DATA.forEach(r => {
   if (d.rate) r.rate = d.rate;
   if (d.txt) r.txt = d.txt;
   if (d.kw) r.kw = d.kw;
+  // Older cache entries were cut at TXT_CAP characters; `full` marks uncut text.
+  r._capped = !d.full && !!d.txt && d.txt.length >= TXT_CAP[r.src];
   // Some long jGrants windows are post-adoption procedures; trust the body when it says intake has ended.
   const ended = r.txt && r.txt.match(/(受付|募集|申込|申請|公募)(受付)?(は|を)?(すべて|全て)?終了(いた)?し(ました|ています)|予算(額)?(の上限)?に達した(ため|ので)[^。]{0,30}(終了|締め切)|(受付|募集)を?締め切りました/);
   if (ended && r.x !== "closed") { r.x = "closed"; r.n = r.n || `公式の記載に「${ended[0]}」とあります。`; }
@@ -527,11 +538,119 @@ function cleanTitle(t){
   return { title: (m[1] || "") + rest, kind: m[2] };
 }
 
+const PREF_LIST = ["全国","北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県","海外"];
+
+// ---- 所管（どの省庁・自治体の事業か）と窓口（問合せ先・実施機関） ----
+// jGrants' institution_name holds the programme name, not the body, so both are derived from the title,
+// the "■問合せ先" section of the official text, and J-Net21's 実施機関.
+const MINISTRY_RULES = [
+  ["農林水産省", /農林水産省|農水省|水産庁|林野庁|農政局|農政事務所|農畜産業振興機構|農研機構|農林水産・食品産業技術振興協会/],
+  ["経済産業省", /経済産業省|経産省|中小企業庁|資源エネルギー庁|特許庁|経済産業局|新エネルギー・産業技術総合開発機構|NEDO|中小企業基盤整備機構|中小機構|工業所有権情報・研修館|INPIT|日本貿易振興機構|JETRO/i],
+  ["環境省", /環境省|地方環境事務所/],
+  ["国土交通省", /国土交通省|国交省|観光庁|運輸局|地方整備局/],
+  ["厚生労働省", /厚生労働省|厚労省|(?<!産業|商工)労働局|厚生局|高齢・障害・求職者雇用支援機構|勤労者退職金共済機構/],
+  ["文部科学省", /文部科学省|文化庁|スポーツ庁|日本学生支援機構|科学技術振興機構/],
+  ["総務省", /総務省/],
+  ["内閣府", /内閣府/],
+  ["財務省", /財務省|国税庁|国税局|国税事務所/],
+  ["デジタル庁", /デジタル庁/], ["復興庁", /復興庁/], ["防衛省", /防衛省/], ["こども家庭庁", /こども家庭庁/],
+  ["消費者庁", /消費者庁/], ["外務省", /外務省/], ["法務省", /法務省/],
+];
+const MAIN_MINISTRIES = ["農林水産省", "経済産業省", "環境省", "国土交通省", "厚生労働省", "文部科学省", "総務省", "内閣府", "財務省"];
+// Budget lines whose ministry is unambiguous even when only the 事務局 is named.
+const PROGRAMME_RULES = [
+  ["環境省", /二酸化炭素排出抑制対策事業費等補助金|環境配慮型先進トラック・バス|国立公園/],
+  ["経済産業省", /事業再構築補助金|ものづくり・商業・サービス|小規模事業者持続化補助金|IT導入補助金|デジタル化・AI導入補助金|省力化投資補助|事業承継・(引継|M&A)|新事業進出|成長加速化補助金|ポスト5G|グローバルサウス未来志向型|エネルギー・製造プロセス転換|省エネルギー投資|天然ガス利用設備による強[靱靭]性/],
+  ["国土交通省", /建築GX|子育てグリーン住宅|住宅省エネ/],
+  ["財務省", /酒類業振興/],
+];
+// "ちば", "ひょうご" etc. — prefectural support foundations often use the hiragana name.
+const PREF_KANA = "ほっかいどう|あおもり|いわて|みやぎ|あきた|やまがた|ふくしま|いばらき|とちぎ|ぐんま|さいたま|ちば|とうきょう|かながわ|にいがた|とやま|いしかわ|ふくい|やまなし|ながの|ぎふ|しずおか|あいち|みえ|しが|きょうと|おおさか|ひょうご|なら|わかやま|とっとり|しまね|おかやま|ひろしま|やまぐち|とくしま|かがわ|えひめ|こうち|ふくおか|さが|ながさき|くまもと|おおいた|みやざき|かごしま|おきなわ";
+const PREF_NAME_RE = new RegExp("(" + PREF_LIST.filter(p => p !== "全国" && p !== "海外").map(p => p === "北海道" ? p : p.replace(/[都府県]$/, "")).join("|") + "|" + PREF_KANA + ")");
+const GOV_NAME_RE = /^(?:[^\s・、]{2,3}[都道府県]\s*)?[^\s・、（(「]{1,7}[市区町村]$|^[^\s・、]{2,3}[都道府県]$/;
+// "今治市 産業部…", "奈良県 橿原市 …", "東京都保健医療局…"
+const GOV_HEAD_RE = /^[\s【（(]*(?:[^\s]{2,3}[都道府県]\s*)?([^\s　、・（(【]{1,6}?[市区町村])(?=[\s　]|役所|役場|.{0,12}?(部|局|課|室|係))|^[\s【（(]*([^\s]{2,3}[都道府県])(?=[\s　]|庁|.{0,12}?(部|局|課|室|係))/;
+const DEPT_HEAD_RE = /^[\s【（(]*(?:【[^】]*】\s*)?[^\s]{0,10}(局|部)\s*[^\s]{0,14}(課|室|係|担当)/;
+const AFFILIATE_RE = /財団|公社|機構|センター|事業団|協会/;
+const NON_GOV_RE = /法人|財団|協会|事務局|センター|協議会|機構|株式会社|組合|会議所|商工会/;
+const FINANCE_RE = /政策金融公庫|沖縄振興開発金融公庫|商工組合中央金庫|商工中金|信用保証協会/;
+const CHAMBER_RE = /中小企業団体中央会|商工会議所|商工会/;
+
+const ministryIn = t => { for (const [n, re] of MINISTRY_RULES) if (re.test(t || "")) return n; return ""; };
+function sectionMap(rec){
+  const o = {};
+  (rec.txt || "").split(/■\s*/).forEach((p, i) => {
+    const m = i && p.match(/^([^\s：:。]{2,16})[\s：:]+([\s\S]*)$/);
+    if (m) o[m[1]] = (o[m[1]] ? o[m[1]] + " " : "") + m[2].trim();
+  });
+  return o;
+}
+const sectionBy = (secs, re) => { for (const k of Object.keys(secs)) if (re.test(k)) return secs[k]; return ""; };
+// The body named before the phone/address/mail details, e.g. "農林水産省農村振興局地域振興課".
+function contactHead(c){
+  const head = c.replace(/^【[^】]*】\s*/, "").split(/\s*(?:TEL|Tel|ＴＥＬ|電話|℡|☎|〒|住所|郵送先|E-?mail|Ｅ－?ｍａｉｌ|メール|FAX|ＦＡＸ|ファクス|受付時間|担当者[:：]|https?:)/)[0].trim();
+  return (head.length >= 4 ? head : c).slice(0, 60).replace(/[、,\s]+$/, "");
+}
+
+// Returns [filter key, display label]. Rules go from most to least specific; anything unsure stays 不明.
+function classifyGov(r, contact){
+  const named = n => [MAIN_MINISTRIES.includes(n) ? n : "その他の省庁", n];
+  const local = name => ["自治体", name ? `自治体（${name}）` : "自治体"];
+  if (r.src === "maff") return named("農林水産省");
+  const bracket = (r.t.match(/^【([^】]+)】/) || [])[1] || "";
+  let m = ministryIn(bracket);
+  if (m) return named(m);
+  const single = r.a.length === 1 && r.a[0] !== "全国" && r.a[0] !== "海外" ? r.a[0] : "";
+  if (r.src === "local" && r.o) {
+    const o = r.o.trim();
+    if (FINANCE_RE.test(o)) return ["政府系金融機関・信用保証協会", o];
+    if ((m = ministryIn(o))) return named(m);
+    if (o.split(/[・、]/).every(p => GOV_NAME_RE.test(p.trim()))) return local(r.city || o);
+    if (CHAMBER_RE.test(o)) return ["商工団体", o];
+    if (PREF_NAME_RE.test(o) && /(部|局|課|室)$/.test(o)) return local(single || o);
+    if ((PREF_NAME_RE.test(o) || /[市区町村]/.test(o)) && AFFILIATE_RE.test(o)) return local(`${r.city || single || o}の外郭団体`);
+  }
+  for (const [n, re] of PROGRAMME_RULES) if (re.test(r.t.normalize("NFKC"))) return named(n);
+  if ((m = ministryIn(contact))) return named(m);
+  const g = contact.match(GOV_HEAD_RE);
+  if (g) return local(g[1] || g[3]);
+  if (GOV_NAME_RE.test(bracket)) return local(bracket);
+  if (!r.a.includes("全国") && r.a.length <= 2) {
+    const tg = r.t.replace(/^(令和|平成)\s*[0-9０-９元]+\s*年度?[_　\s]*/, "")
+      .match(/^(?:[^\s]{2,3}[都道府県])?[^\s　・（(「【]{1,6}?[市区町村](?![民内外場])|^[^\s]{2,3}[都道府県](?![民])/);
+    if (tg) return local(tg[0]);
+  }
+  if (single && contact) {
+    const at = contact.indexOf(single);
+    if (at >= 0 && !NON_GOV_RE.test(contact.slice(0, at + single.length + 10))) return local(single);
+    if (DEPT_HEAD_RE.test(contact) && !NON_GOV_RE.test(contact.slice(0, 30))) return local(r.city || single);
+    if (PREF_NAME_RE.test(contact.slice(0, 20)) && AFFILIATE_RE.test(contact.slice(0, 40))) return local(`${single}の外郭団体`);
+  }
+  if (FINANCE_RE.test(contact)) return ["政府系金融機関・信用保証協会", contactHead(contact)];
+  const txt = r.txt || "";
+  const said = txt.match(/(農林水産省|経済産業省|中小企業庁|環境省|国土交通省|厚生労働省|文部科学省|総務省|内閣府|観光庁|水産庁|林野庁|資源エネルギー庁)(の|が|による|から)?[^。]{0,10}(補助|委託|交付|助成|補正予算|予算)/);
+  if (said) return named(ministryIn(said[1]));
+  // A ministry named anywhere in a nationwide call, when it is the only one mentioned.
+  if (!single) {
+    const fams = new Set(MINISTRY_RULES.filter(([, re]) => re.test(txt)).map(([n]) => n));
+    if (fams.size === 1) return named([...fams][0]);
+  }
+  return ["不明", ""];
+}
+const GOV_KEYS = [...MAIN_MINISTRIES, "その他の省庁", "自治体", "政府系金融機関・信用保証協会", "商工団体", "不明"];
+
 DATA.forEach(r => {
   r._ct = cleanTitle(r.t);
-  // r.ind is only set for listings that restrict industries, so "卸売" finds programmes that name wholesale explicitly.
-  r._h = norm([r.t, r.o, (r.c || []).join(" "), r.g.join(" "), (r.pur || []).join(" "), (r.ind || []).join(" "), r.kw || "", r.txt || ""].join(" "));
   r.city = cityOf(r);
+  const secs = sectionMap(r);
+  const contact = sectionBy(secs, /問(い)?合(わ)?せ|連絡先|申請先|提出先|事務局$/);
+  r.impl = sectionBy(secs, /事業実施主体|実施主体/);
+  [r.gov, r.govLabel] = classifyGov(r, contact);
+  // 窓口: J-Net21's 実施機関 is reliable; for jGrants use the 問合せ先 section.
+  r.win = r.src === "local" ? (r.o || "") : contact ? contactHead(contact) : "";
+  r.winFull = r.src === "local" ? "" : contact;
+  // r.ind is only set for listings that restrict industries, so "卸売" finds programmes that name wholesale explicitly.
+  r._h = norm([r.t, r.o, (r.c || []).join(" "), r.g.join(" "), (r.pur || []).join(" "), (r.ind || []).join(" "), r.govLabel, r.kw || "", r.txt || ""].join(" "));
   if (r.src === "local") r.u = r.u.replace("/snavi/articles/", "/snavi2/articles/");
 });
 
@@ -570,7 +689,6 @@ DATA.forEach(r => { (GROUP_MEMBERS[r._gid] = GROUP_MEMBERS[r._gid] || []).push(r
 // Prefer the member with the most usable details as the one shown in the list.
 const infoScore = r => (r.m != null ? 2 : 0) + (parseD(r.s) ? 1 : 0) + (r.src === "national" ? 1 : 0);
 
-const PREF_LIST = ["全国","北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県","海外"];
 
 const BLOCKS = {
   "北海道地方": ["北海道"],
@@ -669,10 +787,9 @@ function matchesEmpCompanySize(rec, sizeBracket){
   return n <= rec.e;
 }
 
-function orgOf(rec){ return rec.o || "実施機関の記載なし"; }
 
 /* ---------------- shared filter state ---------------- */
-const state = { q: "", tags: [], pref: "", city: "", emp: "", ind: "", amt: "", agency: "", openOnly: true, sort: "deadline" };
+const state = { q: "", tags: [], pref: "", city: "", emp: "", ind: "", amt: "", agency: "", gov: "", openOnly: true, sort: "deadline" };
 
 const CITIES_BY_PREF = {};
 DATA.forEach(r => { if (r.city) (CITIES_BY_PREF[r.a[0]] = CITIES_BY_PREF[r.a[0]] || new Set()).add(r.city); });
@@ -690,6 +807,7 @@ function computeFiltered(s){
     if (!terms.every(t => rec._h.includes(t))) return false;
     if (tagTerms.length && !tagTerms.some(t => rec._h.includes(t))) return false;
     if (s.agency && !rec.g.includes(s.agency)) return false;
+    if (s.gov && rec.gov !== s.gov) return false;
     if (!matchesPref(rec, s.pref)) return false;
     // A business in a city can use that city's programmes plus prefecture-wide and national ones.
     if (s.city && rec.city && rec.city !== s.city) return false;
@@ -781,7 +899,6 @@ function srcBadge(rec){
 }
 
 // ---- Summaries extracted verbatim from the official text (no rewriting) ----
-const TXT_CAP = { national: 1200, local: 600 };
 function cleanTxt(t){
   return t
     .replace(/申(込|請)方法ほか詳細情報は、?「詳細情報を見る」からご確認(ください|下さい)。?/g, "")
@@ -827,11 +944,18 @@ function sectionsOf(rec){
 const lineBreakMeta = s => s.replace(/\s+(?=[^\s：:。、]{2,12}[：:])/g, "\n").replace(/\s+(?=[（(][0-9０-９]+[）)]|[①-⑩]|[ア-オ]）)/g, "\n");
 // Input must already be HTML-escaped.
 const linkify = html => html.replace(/https?:\/\/[^\s<>"'）)」]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
-const isTruncated = rec => rec.txt && rec.txt.length >= (TXT_CAP[rec.src] || 1e9) - 1;
+const isTruncated = rec => !!rec._capped;
 
 function kindChip(rec){
   const k = rec._ct.kind;
   return k && k !== "補助金・助成金" ? `<span class="kind-chip">${escapeHtml(k)}</span>` : "";
+}
+
+// "[農林水産省] 窓口: 公益社団法人…事務局" — the 窓口 is dropped when it only repeats the 自治体 name.
+function govLine(rec){
+  const chip = rec.gov !== "不明" ? `<span class="gov-chip${rec.gov === "農林水産省" ? " gov-maff" : ""}">${escapeHtml(rec.govLabel)}</span>` : "";
+  const win = rec.win && !rec.govLabel.includes(rec.win) ? `<span class="gov-win">窓口: ${escapeHtml(rec.win)}</span>` : "";
+  return chip || win ? `<div class="card-org">${chip}${win}</div>` : "";
 }
 
 function cardHtml(item){
@@ -840,7 +964,7 @@ function cardHtml(item){
     <div class="card-top">
       <div>
         <div class="card-title">${kindChip(rec)}${escapeHtml(item.title)}</div>
-        ${rec.o ? `<div class="card-org">${escapeHtml(rec.o)}</div>` : ""}
+        ${govLine(rec)}
         ${summaryOf(rec) ? `<div class="card-summary">${escapeHtml(summaryOf(rec))}</div>` : ""}
       </div>
       <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
@@ -909,14 +1033,19 @@ function openDetail(id){
   const linkLabel = rec.src === "local" ? "支援情報ヘッドラインで詳細を見る ↗" : rec.src === "maff" ? "事務局サイトで詳細・申請要領を見る ↗" : "公式jGrantsで詳細・申請要領を見る ↗";
   const allSections = sectionsOf(rec);
   const lead = allSections.length && !allSections[0].h ? allSections[0].body : "";
-  const sections = allSections.filter(s => s.h);
+  // 問合せ先・事業実施主体 are shown in their own rows above.
+  const sections = allSections.filter(s => s.h && !/問(い)?合(わ)?せ|連絡先|申請先|提出先|事務局$|事業実施主体|実施主体/.test(s.h));
   bg.innerHTML = `<div class="overlay-panel" role="dialog" aria-modal="true">
     <button class="overlay-close" id="ovClose">← 一覧に戻る</button>
     <div style="display:flex; gap:8px; margin-bottom:10px;">${statusPill(rec)}${srcBadge(rec)}</div>
     <h2>${kindChip(rec)}${escapeHtml(rec._ct.title)}</h2>
-    <div class="overlay-org">${escapeHtml(orgOf(rec))}</div>
     ${lead ? `<p class="overlay-lead">${escapeHtml(lineBreakMeta(lead))}</p>` : ""}
     <div class="overlay-grid">
+      <div class="overlay-row"><div class="k">所管（どの省庁・自治体の事業か）</div><div class="v">${rec.gov !== "不明"
+        ? `<span class="gov-chip${rec.gov === "農林水産省" ? " gov-maff" : ""}">${escapeHtml(rec.govLabel)}</span><span class="gov-note">タイトル・問合せ先・本文から自動判定</span>`
+        : `判定できませんでした。下の問合せ先や公式ページでご確認ください。`}</div></div>
+      ${rec.impl ? `<div class="overlay-row"><div class="k">事業実施主体（公募の記載）</div><div class="v">${escapeHtml(rec.impl)}</div></div>` : ""}
+      ${rec.winFull || rec.win ? `<div class="overlay-row"><div class="k">${rec.src === "local" ? "実施機関" : "問合せ先・事務局"}</div><div class="v">${linkify(escapeHtml(lineBreakMeta(rec.winFull || rec.win)))}</div></div>` : ""}
       <div class="overlay-row"><div class="k">補助上限額</div><div class="v amt tabular">${fmtAmt(rec.m)}</div></div>
       ${rec.rate ? `<div class="overlay-row"><div class="k">補助率</div><div class="v">${escapeHtml(rec.rate)}</div></div>` : ""}
       <div class="overlay-row"><div class="k">受付期間</div><div class="v tabular">${fmtDate(rec.s)} 〜 ${fmtDate(rec.d)}</div></div>
@@ -963,6 +1092,9 @@ function initFilterPanel(){
   document.getElementById("fAgency").innerHTML = `<option value="">指定しない</option>` +
     AGENCIES.map(a => `<option value="${a.key}">${a.label}（${DATA.filter(r => r.g.includes(a.key)).length.toLocaleString()}件）</option>`).join("");
   document.getElementById("fAgency").addEventListener("change", e => { state.agency = e.target.value; visibleCount = 30; renderResults(); });
+  document.getElementById("fGov").innerHTML = `<option value="">指定しない</option>` +
+    GOV_KEYS.map(k => `<option value="${k}">${k === "不明" ? "判定できないもの" : k}（${DATA.filter(r => r.gov === k).length.toLocaleString()}件）</option>`).join("");
+  document.getElementById("fGov").addEventListener("change", e => { state.gov = e.target.value; visibleCount = 30; renderResults(); });
 
   document.getElementById("fKeyword").addEventListener("input", e => { state.q = e.target.value.trim(); visibleCount = 30; renderResults(); });
   document.getElementById("fPref").addEventListener("change", e => { state.pref = e.target.value; fillCities(); visibleCount = 30; renderResults(); });
@@ -975,10 +1107,11 @@ function initFilterPanel(){
   document.getElementById("sortSelect").addEventListener("change", e => { state.sort = e.target.value; renderResults(); });
   document.getElementById("loadMoreBtn").addEventListener("click", () => { visibleCount += 30; renderResults(); });
   document.getElementById("resetFilters").addEventListener("click", () => {
-    state.q=""; state.tags=[]; state.pref=""; state.city=""; state.emp=""; state.ind=""; state.amt=""; state.agency=""; state.openOnly=true; state.sort="deadline";
+    state.q=""; state.tags=[]; state.pref=""; state.city=""; state.emp=""; state.ind=""; state.amt=""; state.agency=""; state.gov=""; state.openOnly=true; state.sort="deadline";
     document.getElementById("fInd").value="";
     fillCities();
     document.getElementById("fAgency").value="";
+    document.getElementById("fGov").value="";
     document.getElementById("fKeyword").value="";
     document.getElementById("fPref").value="";
     document.getElementById("fEmp").value="";
@@ -1099,8 +1232,9 @@ function renderWizardStep(){
   } else if (wz.step === 4){
     state.tags = wz.tags.slice();
     state.q = wz.freeText || "";
-    state.pref = wz.pref; state.city = ""; state.emp = wz.emp; state.ind = ""; state.amt = wz.amt; state.agency = ""; state.openOnly = true; state.sort = "deadline";
+    state.pref = wz.pref; state.city = ""; state.emp = wz.emp; state.ind = ""; state.amt = wz.amt; state.agency = ""; state.gov = ""; state.openOnly = true; state.sort = "deadline";
     document.getElementById("fAgency").value = "";
+    document.getElementById("fGov").value = "";
     document.getElementById("fInd").value = "";
     visibleCount = 30;
     document.getElementById("fKeyword").value = state.q;

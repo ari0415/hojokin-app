@@ -104,7 +104,7 @@ $lClient.DefaultRequestHeaders.UserAgent.ParseAdd("hojokin-compass/1.0")
 $recheckBefore = ([DateTime]$Today).AddDays(-$LocalRecheckDays).ToString("yyyy-MM-dd")
 $locTargets = @($loc | Where-Object {
   ($_.d -eq "unknown" -or -not $_.d -or $_.d -ge $Today) -and
-  (-not $ld.ContainsKey($_.id) -or (-not $ld[$_.id].removed -and ($ld[$_.id].checked -lt $recheckBefore -or ($ld[$_.id].txt -and $ld[$_.id].txt.Length -ge 600))))
+  (-not $ld.ContainsKey($_.id) -or (-not $ld[$_.id].removed -and ($ld[$_.id].checked -lt $recheckBefore -or (-not $ld[$_.id].full -and $ld[$_.id].txt -and $ld[$_.id].txt.Length -ge 600))))
 })
 Write-Output "J-Net21 articles to fetch: $($locTargets.Count)"
 for ($i = 0; $i -lt $locTargets.Count; $i += 100) {
@@ -132,6 +132,7 @@ for ($i = 0; $i -lt $locTargets.Count; $i += 100) {
       txt     = ($body -replace '申込方法ほか詳細情報は、「詳細情報を見る」からご確認(ください|下さい)。', '').Trim()
       srcUrl  = $src
       p       = $pub
+      full    = $true
     }
   }
   Save-Json $ldPath $ld
