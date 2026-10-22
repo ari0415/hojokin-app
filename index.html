@@ -146,6 +146,8 @@
     padding: 18px;
   }
   .filters { position: sticky; top: 20px; display: flex; flex-direction: column; gap: 16px; }
+  /* In the single-column layout a sticky panel would sit on top of the result list. */
+  @media (max-width: 860px) { .filters { position: static; } }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field label { font-size: 12px; font-weight: 700; color: var(--ink-soft); letter-spacing: 0.03em; }
   input[type="text"], input[type="search"], select {
@@ -296,9 +298,13 @@
   .overlay-close:hover { color: var(--ai); }
   .overlay-panel h2 { font-family: var(--font-head); font-size: 20px; line-height: 1.5; margin: 0 0 6px; text-wrap: balance; }
   .overlay-org { color: var(--ink-soft); font-size: 13px; margin-bottom: 18px; }
-  .card-summary {
-    font-size: 13px; line-height: 1.6; color: var(--ink); margin-top: 6px; max-width: 62ch;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  .card-summary { margin-top: 6px; max-width: 70ch; display: flex; flex-direction: column; gap: 4px; }
+  .card-summary p { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; }
+  .sum-lead { font-size: 13px; line-height: 1.65; color: var(--ink); -webkit-line-clamp: 5; }
+  .sum-line { font-size: 12.5px; line-height: 1.6; color: var(--ink-soft); -webkit-line-clamp: 2; }
+  .sum-k {
+    font-size: 11px; font-weight: 700; color: var(--ai); background: var(--ai-wash);
+    padding: 0 6px; border-radius: 3px; margin-right: 6px;
   }
   .overlay-lead {
     font-size: 14px; line-height: 1.8; margin: -6px 0 20px; padding: 12px 14px;
@@ -958,21 +964,47 @@ function cleanTxt(t){
 }
 // Where the descriptive lead ends and admin details (期間・人数・■見出し…) begin.
 const META_RE = /■|【|※|(指定)?(受付|募集|申請|公募|応募|申込)(受付)?(期間|期限|期日)[:：]|募集人数[:：]|補助対象期間[:：]/;
-function summaryOf(rec){
-  if (!rec.txt) return "";
-  if (rec._sum !== undefined) return rec._sum;
-  // The lead paragraph, or failing that the first section with real content (e.g. "■目的 …").
-  const secs = sectionsOf(rec);
-  const src = secs.find(s => !s.h) || secs.find(s => s.body.length >= 20);
-  if (!src) return rec._sum = "";
-  let t = src.body;
-  const cut = t.search(META_RE);
-  if (cut > 15) t = t.slice(0, cut).trim();
+// Whole sentences up to about `max` chars; a very short opener ("…は発展の要です。") pulls in the next one.
+function sentences(text, max){
+  const cut = text.search(META_RE);
+  const t = cut > 15 ? text.slice(0, cut).trim() : text;
   let out = "";
-  // Whole sentences up to ~120 chars; a very short opener ("…は発展の要です。") pulls in the next one.
-  for (const s of t.split(/(?<=。)/)) { if (out.length >= 40 && (out + s).length > 120) break; out += s; }
+  for (const s of t.split(/(?<=。)/)) { if (out.length >= 40 && (out + s).length > max) break; out += s; }
   out = out.trim();
-  return rec._sum = out.length > 120 ? out.slice(0, 118) + "…" : out;
+  return out.length > max ? out.slice(0, max - 1) + "…" : out;
+}
+const PURPOSE_HEAD_RE = /目的|概要|趣旨|事業内容|事業の内容/;
+const TARGET_HEAD_RE = /応募資格|対象者|対象事業者|応募者|申請者|対象となる者/;
+const CONTENT_HEAD_RE = /補助対象事業|対象経費|対象費用|補助対象|助成対象|対象事業|支援内容|補助内容|助成内容/;
+// MAFF and similar call notices open with "…を公募しますので、…御応募ください。", which says nothing about the programme.
+const BOILERPLATE_LEAD_RE = /公募します|公募を(行い|実施し)ます|御?応募ください|ご応募ください/;
+// { lead, target, content }, each verbatim from the official text (no rewriting).
+function summaryOf(rec){
+  if (rec._sum !== undefined) return rec._sum;
+  const secs = rec.txt ? sectionsOf(rec) : [];
+  const find = (re, not = /^$/) => secs.find(s => s.h && re.test(s.h) && !not.test(s.h) && s.body.length >= 10);
+  const purpose = find(PURPOSE_HEAD_RE);
+  let leadSec = secs.find(s => !s.h);
+  if (!leadSec || (BOILERPLATE_LEAD_RE.test(leadSec.body) && purpose)) leadSec = purpose || secs.find(s => s.body.length >= 20);
+  // J-Net21 notices are short and often open with background, so show nearly all of one.
+  let lead = leadSec ? sentences(leadSec.body, rec.src === "local" ? 320 : 220) : "";
+  // A one-line lead ("…の補助金です。") is followed by the stated purpose when there is one.
+  if (lead && lead.length < 60 && purpose && purpose !== leadSec) lead += " " + sentences(purpose.body, 220 - lead.length);
+  const target = find(TARGET_HEAD_RE), content = find(CONTENT_HEAD_RE, /者|期間/);
+  return rec._sum = {
+    lead,
+    target: target && target !== leadSec ? sentences(target.body, 100) : "",
+    content: content && content !== leadSec && content !== target ? sentences(content.body, 100) : "",
+  };
+}
+function summaryHtml(rec){
+  const s = summaryOf(rec);
+  if (!s.lead && !s.target && !s.content) return "";
+  return `<div class="card-summary">
+    ${s.lead ? `<p class="sum-lead">${escapeHtml(s.lead)}</p>` : ""}
+    ${s.target ? `<p class="sum-line"><span class="sum-k">対象</span>${escapeHtml(s.target)}</p>` : ""}
+    ${s.content ? `<p class="sum-line"><span class="sum-k">支援内容</span>${escapeHtml(s.content)}</p>` : ""}
+  </div>`;
 }
 // "■応募資格 …■補助率 …" → [{h, body}]; the text before the first ■ is the lead.
 function sectionsOf(rec){
@@ -1015,7 +1047,7 @@ function cardHtml(item){
       <div>
         <div class="card-title">${kindChip(rec)}${escapeHtml(item.title)}</div>
         ${govLine(rec)}
-        ${summaryOf(rec) ? `<div class="card-summary">${escapeHtml(summaryOf(rec))}</div>` : ""}
+        ${summaryHtml(rec)}
       </div>
       <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
         ${statusPill(rec)}
