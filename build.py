@@ -146,7 +146,9 @@ def main():
 
     national = json.loads(national_path.read_text(encoding="utf-8"))
     curated = json.loads(curated_path.read_text(encoding="utf-8")) if curated_path.exists() else []
-    combined = national + merged_local + curated
+    maff_path = ROOT / "data" / "maff.json"
+    maff = json.loads(maff_path.read_text(encoding="utf-8")) if maff_path.exists() else []
+    combined = national + merged_local + maff + curated
     dataset_path.write_text(
         json.dumps(combined, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",

@@ -6,6 +6,7 @@
 
 - `data/jgrants_national.json` — デジタル庁「jGrants」公開APIから取得した国・自治体掲載の補助金・助成金データ
 - `data/local_gov.json` — 独立行政法人中小企業基盤整備機構「支援情報ヘッドライン」の検索結果ページから収集・蓄積している都道府県・市区町村独自の補助金・助成金・給付金・融資データ
+- `data/maff.json` — 農林水産省「補助事業参加者の公募」（https://www.maff.go.jp/j/supply/hozyo/index.html）の公募一覧と各公募ページ本文。公共データ利用規約(PDL1.0)のため出典表示が必要（アプリのフッター・詳細画面に表示）。`scripts/fetch_maff.ps1` で取得
 - `data/curated.json` — 上記2つに載らない制度を手動で追加したデータ（例: 農水省委託事業で業界団体が事務局を務めるもの）
 - `data/overrides.json` — 公式スケジュール（中小機構「補助金活用ナビ」）で確認した受付状況の補正
 - `data/jgrants_detail.json` — jGrants詳細APIから取得した対象業種・利用目的・補助率・本文（キャッシュ）

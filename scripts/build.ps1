@@ -12,7 +12,7 @@ function Read-Text($rel, $default) {
 }
 
 $combined = @()
-foreach ($f in @("data\jgrants_national.json", "data\local_gov.json", "data\curated.json")) {
+foreach ($f in @("data\jgrants_national.json", "data\local_gov.json", "data\maff.json", "data\curated.json")) {
   $combined += (Read-Text $f "[]") | ConvertFrom-Json
 }
 $dataJson = $combined | ConvertTo-Json -Depth 6 -Compress

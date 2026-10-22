@@ -437,7 +437,7 @@
 </div>
 
 <footer class="site-footer">
-  <div>データ出所: デジタル庁「jGrants」公開API（国の補助金・助成金および自治体掲載分）／独立行政法人中小企業基盤整備機構「支援情報ヘッドライン」（都道府県・市区町村独自の補助金・助成金・給付金・融資情報）。主要補助金の受付状況は中小機構「補助金活用ナビ」の公式スケジュールで補正しています。募集内容・締切等の最終判断は必ず各リンク先の公式ページでご確認ください。</div>
+  <div>データ出所: デジタル庁「jGrants」公開API（国の補助金・助成金および自治体掲載分）／独立行政法人中小企業基盤整備機構「支援情報ヘッドライン」（都道府県・市区町村独自の補助金・助成金・給付金・融資情報）／出典：農林水産省ウェブサイト「補助事業参加者の公募」（<a href="https://www.maff.go.jp/j/supply/hozyo/index.html" target="_blank" rel="noopener">https://www.maff.go.jp/j/supply/hozyo/index.html</a>）を加工して作成。主要補助金の受付状況は中小機構「補助金活用ナビ」の公式スケジュールで補正しています。募集内容・締切等の最終判断は必ず各リンク先の公式ページでご確認ください。</div>
   <div id="footUpdated">最終更新: -</div>
 </footer>
 
@@ -596,7 +596,7 @@ function contactHead(c){
 function classifyGov(r, contact){
   const named = n => [MAIN_MINISTRIES.includes(n) ? n : "その他の省庁", n];
   const local = name => ["自治体", name ? `自治体（${name}）` : "自治体"];
-  if (r.src === "maff") return named("農林水産省");
+  if (r.src === "maff" || r.src === "maffkobo") return named("農林水産省");
   const bracket = (r.t.match(/^【([^】]+)】/) || [])[1] || "";
   let m = ministryIn(bracket);
   if (m) return named(m);
@@ -646,8 +646,8 @@ DATA.forEach(r => {
   const contact = sectionBy(secs, /問(い)?合(わ)?せ|連絡先|申請先|提出先|事務局$/);
   r.impl = sectionBy(secs, /事業実施主体|実施主体/);
   [r.gov, r.govLabel] = classifyGov(r, contact);
-  // 窓口: J-Net21's 実施機関 is reliable; for jGrants use the 問合せ先 section.
-  r.win = r.src === "local" ? (r.o || "") : contact ? contactHead(contact) : "";
+  // 窓口: J-Net21's 実施機関 and the MAFF 担当部局 are reliable; for jGrants use the 問合せ先 section.
+  r.win = r.src === "local" || r.src === "maffkobo" ? (r.o || "") : contact ? contactHead(contact) : "";
   r.winFull = r.src === "local" ? "" : contact;
   // r.ind is only set for listings that restrict industries, so "卸売" finds programmes that name wholesale explicitly.
   r._h = norm([r.t, r.o, (r.c || []).join(" "), r.g.join(" "), (r.pur || []).join(" "), (r.ind || []).join(" "), r.govLabel, r.kw || "", r.txt || ""].join(" "));
@@ -687,7 +687,8 @@ const GROUP_MEMBERS = {};
 DATA.forEach(r => { (GROUP_MEMBERS[r._gid] = GROUP_MEMBERS[r._gid] || []).push(r); });
 
 // Prefer the member with the most usable details as the one shown in the list.
-const infoScore = r => (r.m != null ? 2 : 0) + (parseD(r.s) ? 1 : 0) + (r.src === "national" ? 1 : 0);
+// The ministry's own call page is the primary source, so it represents the group over aggregator copies.
+const infoScore = r => (r.m != null ? 2 : 0) + (parseD(r.s) ? 1 : 0) + (r.src === "maffkobo" ? 2 : r.src === "national" ? 1 : 0);
 
 
 const BLOCKS = {
@@ -892,11 +893,18 @@ function statusPill(rec){
   return `${newChip}<span class="pill pill-open">募集中</span>`;
 }
 
-function srcBadge(rec){
-  if (rec.src === "local") return `<span class="src-badge">支援情報ヘッドライン</span>`;
-  if (rec.src === "maff") return `<span class="src-badge">公式サイトから追加</span>`;
-  return `<span class="src-badge">jGrants</span>`;
-}
+const SOURCES = {
+  national: { badge: "jGrants", short: "jGrants", link: "公式jGrantsで詳細・申請要領を見る ↗",
+    note: "本アプリはjGrants公開APIの情報をもとに一覧化した参考情報です。" },
+  local: { badge: "支援情報ヘッドライン", short: "支援情報ヘッドライン", link: "支援情報ヘッドラインで詳細を見る ↗",
+    note: "本アプリは中小機構「支援情報ヘッドライン」の情報をもとに一覧化した参考情報です。" },
+  maff: { badge: "公式サイトから追加", short: "公式サイト", link: "事務局サイトで詳細・申請要領を見る ↗",
+    note: "本アプリで手動で追加した情報です。" },
+  // 公共データ利用規約(PDL1.0): the source must be credited and edits disclosed.
+  maffkobo: { badge: "農林水産省 公募", short: "農林水産省", link: "農林水産省の公募ページで公募要領を見る ↗",
+    note: "出典：農林水産省ウェブサイト「補助事業参加者の公募」（https://www.maff.go.jp/j/supply/hozyo/index.html）の情報を加工して作成。" },
+};
+const srcBadge = rec => `<span class="src-badge">${SOURCES[rec.src].badge}</span>`;
 
 // ---- Summaries extracted verbatim from the official text (no rewriting) ----
 function cleanTxt(t){
@@ -1024,13 +1032,13 @@ function openDetail(id){
   const related = item ? item.related : [];
   const relatedHtml = related.length ? `<div class="related-block">
       <div class="k">同じ制度の別枠・別掲載（${related.length}件）</div>
-      <ul class="related-list">${related.map(r => `<li>${statusPill(r)} <a href="${escapeHtml(r.u)}" target="_blank" rel="noopener">${escapeHtml(r._ct.title)}</a> <span class="related-src">${r.src === "local" ? "支援情報ヘッドライン" : r.src === "maff" ? "公式サイト" : "jGrants"}</span></li>`).join("")}</ul>
+      <ul class="related-list">${related.map(r => `<li>${statusPill(r)} <a href="${escapeHtml(r.u)}" target="_blank" rel="noopener">${escapeHtml(r._ct.title)}</a> <span class="related-src">${SOURCES[r.src].short}</span></li>`).join("")}</ul>
     </div>` : "";
   const bg = document.createElement("div");
   bg.className = "overlay-bg";
   const areaText = rec.a.includes("全国") ? "全国（全47都道府県が対象）" : rec.a.join(" / ");
   const descRow = rec.desc ? `<div class="overlay-row"><div class="k">概要（配信元テキストそのまま）</div><div class="v">${escapeHtml(rec.desc)}</div></div>` : "";
-  const linkLabel = rec.src === "local" ? "支援情報ヘッドラインで詳細を見る ↗" : rec.src === "maff" ? "事務局サイトで詳細・申請要領を見る ↗" : "公式jGrantsで詳細・申請要領を見る ↗";
+  const linkLabel = SOURCES[rec.src].link;
   const allSections = sectionsOf(rec);
   const lead = allSections.length && !allSections[0].h ? allSections[0].body : "";
   // 問合せ先・事業実施主体 are shown in their own rows above.
@@ -1045,6 +1053,7 @@ function openDetail(id){
         ? `<span class="gov-chip${rec.gov === "農林水産省" ? " gov-maff" : ""}">${escapeHtml(rec.govLabel)}</span><span class="gov-note">タイトル・問合せ先・本文から自動判定</span>`
         : `判定できませんでした。下の問合せ先や公式ページでご確認ください。`}</div></div>
       ${rec.impl ? `<div class="overlay-row"><div class="k">事業実施主体（公募の記載）</div><div class="v">${escapeHtml(rec.impl)}</div></div>` : ""}
+      ${rec.src === "maffkobo" && rec.o ? `<div class="overlay-row"><div class="k">担当部局</div><div class="v">${escapeHtml(rec.o)}</div></div>` : ""}
       ${rec.winFull || rec.win ? `<div class="overlay-row"><div class="k">${rec.src === "local" ? "実施機関" : "問合せ先・事務局"}</div><div class="v">${linkify(escapeHtml(lineBreakMeta(rec.winFull || rec.win)))}</div></div>` : ""}
       <div class="overlay-row"><div class="k">補助上限額</div><div class="v amt tabular">${fmtAmt(rec.m)}</div></div>
       ${rec.rate ? `<div class="overlay-row"><div class="k">補助率</div><div class="v">${escapeHtml(rec.rate)}</div></div>` : ""}
@@ -1067,7 +1076,7 @@ function openDetail(id){
     <a class="overlay-link secondary" href="${escapeHtml(rec.u)}" target="_blank" rel="noopener">${linkLabel}</a>`
     : `<a class="overlay-link" href="${escapeHtml(rec.u)}" target="_blank" rel="noopener">${linkLabel}</a>`}
     ${relatedHtml}
-    <div class="overlay-note">${rec.src === "local" ? "本アプリは中小機構「支援情報ヘッドライン」の情報をもとに一覧化した参考情報です。" : rec.src === "maff" ? "本アプリで手動で追加した情報です。" : "本アプリはjGrants公開APIの情報をもとに一覧化した参考情報です。"}申請条件・締切の正式な内容は必ずリンク先の公式ページでご確認ください。</div>
+    <div class="overlay-note">${SOURCES[rec.src].note}申請条件・締切の正式な内容は必ずリンク先の公式ページでご確認ください。</div>
   </div>`;
   document.body.appendChild(bg);
   bg.addEventListener("click", e => { if (e.target === bg) bg.remove(); });
